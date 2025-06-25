@@ -4,8 +4,6 @@ import Layout from '../components/Layout';
 import AuthGuard from '../components/AuthGuard';
 
 export default function Home() {
-    return (
-        <AuthGuard>
   const [status, setStatus] = useState({
     bot_status: 'stopped',
     last_restart: 'N/A',
@@ -70,39 +68,38 @@ export default function Home() {
   };
 
   return (
-    <Layout>
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">交易机器人控制面板</h1>
+    <AuthGuard>
+      <Layout>
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold mb-8">交易机器人控制面板</h1>
 
-        <BotCard
-          status={status}
-          logs={logs}
-          onStart={handleStart}
-          onStop={handleStop}
-          onRestart={handleRestart}
-          loading={loading}
-        />
+          <BotCard
+            status={status}
+            logs={logs}
+            onStart={handleStart}
+            onStop={handleStop}
+            onRestart={handleRestart}
+            loading={loading}
+          />
 
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <a href="/config" className="card bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
-            <h2 className="text-xl font-semibold mb-2">配置管理</h2>
-            <p>查看和修改机器人配置参数</p>
-          </a>
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <a href="/config" className="card bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
+              <h2 className="text-xl font-semibold mb-2">配置管理</h2>
+              <p>查看和修改机器人配置参数</p>
+            </a>
 
-          <a href="/status" className="card bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
-            <h2 className="text-xl font-semibold mb-2">状态监控</h2>
-            <p>实时查看机器人运行状态和指标</p>
-          </a>
+            <a href="/status" className="card bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
+              <h2 className="text-xl font-semibold mb-2">状态监控</h2>
+              <p>实时查看机器人运行状态和指标</p>
+            </a>
 
-          <a href="/logs" className="card bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
-            <h2 className="text-xl font-semibold mb-2">日志查看</h2>
-            <p>查看详细的系统日志记录</p>
-          </a>
+            <a href="/logs" className="card bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
+              <h2 className="text-xl font-semibold mb-2">日志查看</h2>
+              <p>查看详细的系统日志记录</p>
+            </a>
+          </div>
         </div>
-      </div>
-    </Layout>
-  );
-}
+      </Layout>
     </AuthGuard>
   );
 }
