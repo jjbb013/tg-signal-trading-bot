@@ -1,0 +1,33 @@
+{
+  "builds": [
+    {
+      "src": "web/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "includeFiles": ["bot/**/*", "config/**/*"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/bot/(.*)",
+      "dest": "web/src/api/bot"
+    },
+    {
+      "src": "/api/config",
+      "dest": "web/src/api/config"
+    },
+    {
+      "src": "/api/status",
+      "dest": "web/src/api/status"
+    },
+    {
+      "src": "/api/logs",
+      "dest": "web/src/api/logs"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "web/$1"
+    }
+  ]
+}
