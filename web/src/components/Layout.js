@@ -1,7 +1,7 @@
 // web/src/components/Layout.js
 import Head from 'next/head';
 import Header from './Header';
-import Footer from './Footer';
+import Footer from './footer';
 import { useAuth } from '../context/AuthContext';
 
 export default function Layout({ children }) {
