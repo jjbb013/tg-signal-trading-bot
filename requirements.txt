@@ -4,4 +4,5 @@ telethon
 sqlalchemy
 jinja2
 requests
-pytz 
+pytz
+python-multipart 
