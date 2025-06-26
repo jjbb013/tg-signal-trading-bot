@@ -15,9 +15,9 @@
                 <label>phone_number: <input name="phone_number" value="{{ config.phone_number if config else '' }}"></label>
                 <label>bark_api_key: <input name="bark_api_key" value="{{ config.bark_api_key if config else '' }}"></label>
                 <label>log_group_id: <input name="log_group_id" value="{{ config.log_group_id if config else '' }}"></label>
-                <label>代理协议: <input name="proxy_protocol" value="{{ config.proxy_protocol if config else '' }}"></label>
-                <label>代理主机: <input name="proxy_host" value="{{ config.proxy_host if config else '' }}"></label>
-                <label>代理端口: <input name="proxy_port" value="{{ config.proxy_port if config else '' }}"></label>
+                <label>代理协议(可选): <input name="proxy_protocol" value="{{ config.proxy_protocol if config else '' }}"></label>
+                <label>代理主机(可选): <input name="proxy_host" value="{{ config.proxy_host if config else '' }}"></label>
+                <label>代理端口(可选): <input name="proxy_port" value="{{ config.proxy_port if config else '' }}"></label>
                 <button type="submit" class="btn">保存配置</button>
             </form>
         </div>

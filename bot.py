@@ -27,6 +27,7 @@ class BotManager:
 
     async def _run(self):
         proxy = None
+        # 仅当 protocol/host/port 都填写时才启用代理
         if self.config.proxy_protocol and self.config.proxy_host and self.config.proxy_port:
             proxy = (self.config.proxy_protocol, self.config.proxy_host, int(self.config.proxy_port))
         client_args = {
