@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Telegram 监听机器人配置</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link rel="stylesheet" href="/static/main.css">
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-inner">
+            <form method="post" action="/config" class="form form-inline topbar-form">
+                <label>api_id: <input name="api_id" value="{{ config.api_id if config else '' }}"></label>
+                <label>api_hash: <input name="api_hash" value="{{ config.api_hash if config else '' }}"></label>
+                <label>phone_number: <input name="phone_number" value="{{ config.phone_number if config else '' }}"></label>
+                <label>bark_api_key: <input name="bark_api_key" value="{{ config.bark_api_key if config else '' }}"></label>
+                <label>log_group_id: <input name="log_group_id" value="{{ config.log_group_id if config else '' }}"></label>
+                <label>代理协议: <input name="proxy_protocol" value="{{ config.proxy_protocol if config else '' }}"></label>
+                <label>代理主机: <input name="proxy_host" value="{{ config.proxy_host if config else '' }}"></label>
+                <label>代理端口: <input name="proxy_port" value="{{ config.proxy_port if config else '' }}"></label>
+                <button type="submit" class="btn">保存配置</button>
+            </form>
+        </div>
+    </div>
+    <div class="main-layout">
+        <div class="left-panel left-narrow">
+            <div class="card">
+                <h2>监听群组</h2>
+                <form method="post" action="/group/add" class="form-inline">
+                    <input name="group_id" placeholder="群组ID">
+                    <button type="submit" class="btn">添加</button>
+                </form>
+                <ul class="group-list">
+                    {% for group in groups %}
+                    <li>
+                        <span class="bubble">{{ group.group_id }}</span>
+                        <form method="post" action="/group/delete" style="display:inline;">
+                            <input type="hidden" name="group_id" value="{{ group.group_id }}">
+                            <button type="submit" class="btn btn-small">删除</button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="card">
+                <h2>机器人控制</h2>
+                <form id="start-form" method="post" action="/bot/start" style="display:inline;">
+                    <button type="submit" class="btn" id="start-btn" {% if config and config.is_running %}disabled{% endif %}>启动监听</button>
+                </form>
+                <form method="post" action="/bot/stop" style="display:inline;">
+                    <button type="submit" class="btn btn-stop" {% if not config or not config.is_running %}disabled{% endif %}>暂停监听</button>
+                </form>
+            </div>
+            <div class="card">
+                <h2>日志查询</h2>
+                <div style="margin-bottom:10px;">
+                    <select id="log-date-select" style="width: 70%;"></select>
+                    <button class="btn" onclick="loadLogFile()">查看日志</button>
+                </div>
+                <textarea id="log-file-content" style="width:100%;height:180px;resize:vertical;" readonly></textarea>
+            </div>
+        </div>
+        <div class="right-panel">
+            <div class="card log-card">
+                <h2>日志
+                    <button class="btn btn-small" style="float:right;margin-left:8px;" onclick="clearLogArea()">清屏</button>
+                    <button class="btn btn-small" style="float:right;" onclick="switchLogMode()" id="log-mode-btn">历史</button>
+                </h2>
+                <div class="log-area" id="log-area">
+                    {% for log in logs %}
+                    <div class="log-bubble">{{ log.content }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Telegram 登录弹窗 -->
+    <div id="login-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close" onclick="hideLoginModal()">&times;</span>
+            <h2>Telegram 登录</h2>
+            <div id="login-step-phone">
+                <input id="login-phone" type="text" placeholder="手机号（如 +8613...）" style="width:100%;margin-bottom:12px;">
+                <button class="btn" onclick="startLogin()">发送验证码</button>
+            </div>
+            <div id="login-step-code" style="display:none;">
+                <input id="login-code" type="text" placeholder="验证码" style="width:100%;margin-bottom:12px;">
+                <button class="btn" onclick="submitCode()">提交验证码</button>
+            </div>
+            <div id="login-step-password" style="display:none;">
+                <input id="login-password" type="password" placeholder="两步验证密码" style="width:100%;margin-bottom:12px;">
+                <button class="btn" onclick="submitPassword()">提交密码</button>
+            </div>
+            <div id="login-step-done" style="display:none;">
+                <span style="color:#229ed9;">登录成功！</span>
+            </div>
+            <div id="login-error" style="color:#e74c3c;margin-top:10px;"></div>
+        </div>
+    </div>
+    <script>
+    let logMode = 'realtime'; // 'realtime' or 'file'
+    function fetchLogs() {
+        if(logMode !== 'realtime') return;
+        fetch('/logs')
+            .then(res => res.json())
+            .then(data => {
+                const logArea = document.getElementById('log-area');
+                logArea.innerHTML = '';
+                data.logs.forEach(log => {
+                    const div = document.createElement('div');
+                    div.className = 'log-bubble';
+                    div.textContent = log;
+                    logArea.appendChild(div);
+                });
+                logArea.scrollTop = logArea.scrollHeight;
+            });
+    }
+    setInterval(fetchLogs, 2000);
+    function clearLogArea() {
+        document.getElementById('log-area').innerHTML = '';
+    }
+    function switchLogMode() {
+        if(logMode === 'realtime') {
+            logMode = 'file';
+            document.getElementById('log-mode-btn').textContent = '实时';
+            document.getElementById('log-area').innerHTML = '<div style="color:#888;text-align:center;margin-top:40px;">请在左侧选择日期并查看日志</div>';
+        } else {
+            logMode = 'realtime';
+            document.getElementById('log-mode-btn').textContent = '历史';
+            fetchLogs();
+        }
+    }
+    // 日志文件查询
+    function loadLogFileList() {
+        fetch('/logs/list').then(res=>res.json()).then(data=>{
+            const sel = document.getElementById('log-date-select');
+            sel.innerHTML = '';
+            data.files.forEach(f=>{
+                const date = f.replace('.log','');
+                const opt = document.createElement('option');
+                opt.value = date;
+                opt.textContent = date;
+                sel.appendChild(opt);
+            });
+        });
+    }
+    function loadLogFile() {
+        const date = document.getElementById('log-date-select').value;
+        if(!date) return;
+        fetch('/logs/file?date='+date).then(res=>res.json()).then(data=>{
+            document.getElementById('log-file-content').value = data.content || '';
+            if(logMode === 'file') {
+                document.getElementById('log-area').innerHTML = '';
+                data.content.split('\n').forEach(line=>{
+                    if(line.trim()){
+                        const div = document.createElement('div');
+                        div.className = 'log-bubble';
+                        div.textContent = line;
+                        document.getElementById('log-area').appendChild(div);
+                    }
+                });
+            }
+        });
+    }
+    // 初始化日志文件列表
+    loadLogFileList();
+
+    // 登录弹窗相关
+    function showLoginModal() {
+        document.getElementById('login-modal').style.display = 'block';
+        resetLoginModal();
+    }
+    function hideLoginModal() {
+        document.getElementById('login-modal').style.display = 'none';
+    }
+    function resetLoginModal() {
+        document.getElementById('login-step-phone').style.display = '';
+        document.getElementById('login-step-code').style.display = 'none';
+        document.getElementById('login-step-password').style.display = 'none';
+        document.getElementById('login-step-done').style.display = 'none';
+        document.getElementById('login-error').textContent = '';
+        document.getElementById('login-phone').value = '';
+        document.getElementById('login-code').value = '';
+        document.getElementById('login-password').value = '';
+    }
+    function startLogin() {
+        const phone = document.getElementById('login-phone').value.trim();
+        if (!phone) { document.getElementById('login-error').textContent = '请输入手机号'; return; }
+        fetch('/tg_login/start', {method:'POST', body: new URLSearchParams({phone})})
+        .then(res=>res.json()).then(data=>{
+            if(data.ok){
+                document.getElementById('login-step-phone').style.display = 'none';
+                document.getElementById('login-step-code').style.display = '';
+                document.getElementById('login-error').textContent = '';
+            }else{
+                document.getElementById('login-error').textContent = data.error || '发送验证码失败';
+            }
+        });
+    }
+    function submitCode() {
+        const code = document.getElementById('login-code').value.trim();
+        if (!code) { document.getElementById('login-error').textContent = '请输入验证码'; return; }
+        fetch('/tg_login/code', {method:'POST', body: new URLSearchParams({code})})
+        .then(res=>res.json()).then(data=>{
+            if(data.ok && data.step==='done'){
+                document.getElementById('login-step-code').style.display = 'none';
+                document.getElementById('login-step-done').style.display = '';
+                document.getElementById('login-error').textContent = '';
+                setTimeout(()=>{ hideLoginModal(); triggerStartBot(); }, 1000);
+            }else if(data.ok && data.step==='password'){
+                document.getElementById('login-step-code').style.display = 'none';
+                document.getElementById('login-step-password').style.display = '';
+                document.getElementById('login-error').textContent = '';
+            }else{
+                document.getElementById('login-error').textContent = data.error || '验证码错误';
+            }
+        });
+    }
+    function submitPassword() {
+        const password = document.getElementById('login-password').value.trim();
+        if (!password) { document.getElementById('login-error').textContent = '请输入两步验证密码'; return; }
+        fetch('/tg_login/password', {method:'POST', body: new URLSearchParams({password})})
+        .then(res=>res.json()).then(data=>{
+            if(data.ok && data.step==='done'){
+                document.getElementById('login-step-password').style.display = 'none';
+                document.getElementById('login-step-done').style.display = '';
+                document.getElementById('login-error').textContent = '';
+                setTimeout(()=>{ hideLoginModal(); triggerStartBot(); }, 1000);
+            }else{
+                document.getElementById('login-error').textContent = data.error || '密码错误';
+            }
+        });
+    }
+    // 自动检测登录状态并自动弹窗
+    document.getElementById('start-form').addEventListener('submit', function(e){
+        e.preventDefault();
+        fetch('/bot/start', {method:'POST'})
+        .then(res=>res.json().catch(()=>null))
+        .then(data=>{
+            if(data && data.need_login){
+                showLoginModal();
+            }else{
+                // 启动成功或已在运行，直接刷新页面
+                window.location.reload();
+            }
+        });
+    });
+    function triggerStartBot(){
+        document.getElementById('start-btn').disabled = false;
+        document.getElementById('start-form').dispatchEvent(new Event('submit'));
+    }
+    </script>
+    <style>
+    .topbar {
+        width: 100vw;
+        background: #fff;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 0;
+        margin: 0 0 12px 0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .topbar-inner {
+        max-width: 100vw;
+        margin: 0 auto;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        overflow-x: auto;
+    }
+    .topbar-form label {
+        margin-right: 12px;
+        font-size: 0.98em;
+        color: #555;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .topbar-form input {
+        width: 120px;
+        margin-left: 4px;
+        margin-right: 8px;
+        min-width: 80px;
+    }
+    .topbar-form .btn {
+        min-width: 80px;
+        margin-left: 8px;
+    }
+    .left-narrow {
+        max-width: 340px;
+        min-width: 220px;
+        width: 100%;
+    }
+    @media (max-width: 900px) {
+        .topbar-inner {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .topbar-form label, .topbar-form .btn {
+            margin-bottom: 6px;
+        }
+        .left-narrow {
+            max-width: 100vw;
+            min-width: 0;
+        }
+    }
+    .modal {
+        position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.18); z-index: 1000; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-content {
+        background: #fff; border-radius: 8px; padding: 32px 24px; min-width: 320px; max-width: 90vw; box-shadow: 0 2px 16px #0001; position: relative;
+    }
+    .modal .close {
+        position: absolute; right: 16px; top: 12px; font-size: 1.5em; color: #888; cursor: pointer;
+    }
+    </style>
+</body>
+</html> 
