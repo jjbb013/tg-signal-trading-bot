@@ -48,28 +48,41 @@
 
 #### 方法二：使用GitHub Actions
 
-1. **配置GitHub Secrets**
-   - 进入GitHub仓库的Settings > Secrets and variables > Actions
-   - 添加以下secrets：
-     - `NORTHFLANK_TOKEN`: 你的Northflank API token
-     - `NORTHFLANK_PROJECT_ID`: 项目ID
-     - `NORTHFLANK_SERVICE_ID`: 服务ID
-
-2. **获取Northflank配置信息**
+1. **安装Northflank CLI并获取配置信息**
    ```bash
-   # 安装Northflank CLI
+   # 安装CLI
    npm install -g @northflank/cli
    
    # 登录
    northflank auth:login
    
-   # 获取项目和服务信息
-   northflank project:list
-   northflank service:list
+   # 运行配置工具（推荐）
+   chmod +x setup-northflank.sh
+   ./setup-northflank.sh
    ```
 
-3. **推送代码触发部署**
+2. **手动获取配置信息（如果脚本不工作）**
+   ```bash
+   # 获取项目列表
+   northflank project:list
+   
+   # 获取服务列表
+   northflank service:list
+   
+   # 获取API Token
+   northflank auth:token
+   ```
+
+3. **配置GitHub Secrets**
+   - 进入GitHub仓库的Settings > Secrets and variables > Actions
+   - 添加以下secrets：
+     - `NORTHFLANK_TOKEN`: 从 `northflank auth:token` 获取
+     - `NORTHFLANK_PROJECT_ID`: 从项目列表中选择
+     - `NORTHFLANK_SERVICE_ID`: 从服务列表中选择
+
+4. **推送代码触发部署**
    - 每次推送到`main`分支时，GitHub Actions会自动触发部署
+   - 也可以在GitHub Actions页面手动触发部署
 
 #### 方法三：使用部署脚本
 

@@ -3,8 +3,7 @@ name: Deploy to Northflank
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  workflow_dispatch: # 允许手动触发
 
 jobs:
   deploy:
@@ -15,17 +14,60 @@ jobs:
       uses: actions/checkout@v3
       
     - name: Deploy to Northflank
-      uses: northflank/deploy-action@v1
-      with:
-        # Northflank配置
-        northflank-token: ${{ secrets.NORTHFLANK_TOKEN }}
-        project-id: ${{ secrets.NORTHFLANK_PROJECT_ID }}
-        service-id: ${{ secrets.NORTHFLANK_SERVICE_ID }}
+      run: |
+        echo "🚀 开始部署到 Northflank..."
         
-        # 部署配置
-        branch: ${{ github.ref_name }}
-        commit-sha: ${{ github.sha }}
+        # 检查必要的secrets
+        if [ -z "${{ secrets.NORTHFLANK_TOKEN }}" ]; then
+          echo "❌ 错误: NORTHFLANK_TOKEN 未设置"
+          exit 1
+        fi
         
-        # 可选：等待部署完成
-        wait-for-deployment: true
-        timeout: 300 
+        if [ -z "${{ secrets.NORTHFLANK_PROJECT_ID }}" ]; then
+          echo "❌ 错误: NORTHFLANK_PROJECT_ID 未设置"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.NORTHFLANK_SERVICE_ID }}" ]; then
+          echo "❌ 错误: NORTHFLANK_SERVICE_ID 未设置"
+          exit 1
+        fi
+        
+        # 构建部署请求
+        DEPLOY_URL="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/${{ secrets.NORTHFLANK_SERVICE_ID }}/deployments"
+        
+        # 创建部署
+        echo "📦 创建部署..."
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X POST \
+          -H "Authorization: Bearer ${{ secrets.NORTHFLANK_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"branch\": \"${{ github.ref_name }}\",
+            \"commitSha\": \"${{ github.sha }}\",
+            \"message\": \"Auto deploy from GitHub Actions - ${{ github.event.head_commit.message }}\"
+          }" \
+          "$DEPLOY_URL")
+        
+        # 解析响应
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        RESPONSE_BODY=$(echo "$RESPONSE" | head -n -1)
+        
+        if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
+          echo "✅ 部署请求已发送"
+          echo "📋 响应: $RESPONSE_BODY"
+          
+          # 可选：等待部署完成
+          if [ "${{ vars.WAIT_FOR_DEPLOYMENT }}" = "true" ]; then
+            echo "⏳ 等待部署完成..."
+            sleep 30
+            echo "✅ 部署完成"
+          fi
+        else
+          echo "❌ 部署失败"
+          echo "📋 响应代码: $HTTP_CODE"
+          echo "📋 响应内容: $RESPONSE_BODY"
+          exit 1
+        fi
+        
+        echo "🎉 部署流程完成！" 
