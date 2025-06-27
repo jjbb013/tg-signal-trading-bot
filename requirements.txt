@@ -1,1 +1,4 @@
-telethon 
+# Telegram监听机器人依赖
+telethon    # Telegram API 客户端库
+requests    # 用于Bark推送HTTP请求
+pytz        # 时区处理 
