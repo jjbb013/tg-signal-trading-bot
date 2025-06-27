@@ -9,9 +9,6 @@ class Config(Base):
     phone_number = Column(String)
     bark_api_key = Column(String)
     log_group_id = Column(String)
-    proxy_protocol = Column(String, nullable=True)
-    proxy_host = Column(String, nullable=True)
-    proxy_port = Column(Integer, nullable=True)
     is_running = Column(Boolean, default=False)
 
 class Group(Base):

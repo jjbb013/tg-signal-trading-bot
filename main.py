@@ -26,15 +26,11 @@ if os.path.exists("telegram_config.json"):
     if not config:
         config = Config()
         db.add(config)
-    config.api_id = config_json.get("api_id")
-    config.api_hash = config_json.get("api_hash")
-    config.phone_number = config_json.get("phone_number")
-    config.bark_api_key = config_json.get("bark_api_key")
-    config.log_group_id = str(config_json.get("log_group_id"))
-    proxy = config_json.get("proxy", {})
-    config.proxy_protocol = proxy.get("protocol")
-    config.proxy_host = proxy.get("host")
-    config.proxy_port = proxy.get("port")
+    config.api_id = str(config_json.get("api_id", ""))
+    config.api_hash = str(config_json.get("api_hash", ""))
+    config.phone_number = str(config_json.get("phone_number", ""))
+    config.bark_api_key = str(config_json.get("bark_api_key", ""))
+    config.log_group_id = str(config_json.get("log_group_id", ""))
     db.commit()
     db.close()
 
@@ -100,24 +96,18 @@ def update_config(
     api_hash: str = Form(...),
     phone_number: str = Form(...),
     bark_api_key: str = Form(...),
-    log_group_id: str = Form(...),
-    proxy_protocol: str = Form(None),
-    proxy_host: str = Form(None),
-    proxy_port: int = Form(None)
+    log_group_id: str = Form(...)
 ):
     db = next(get_db())
     config = db.query(Config).first()
     if not config:
         config = Config()
         db.add(config)
-    config.api_id = api_id
-    config.api_hash = api_hash
-    config.phone_number = phone_number
-    config.bark_api_key = bark_api_key
-    config.log_group_id = log_group_id
-    config.proxy_protocol = proxy_protocol
-    config.proxy_host = proxy_host
-    config.proxy_port = proxy_port
+    config.api_id = str(api_id)
+    config.api_hash = str(api_hash)
+    config.phone_number = str(phone_number)
+    config.bark_api_key = str(bark_api_key)
+    config.log_group_id = str(log_group_id)
     db.commit()
     return RedirectResponse("/", status_code=303)
 

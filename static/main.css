@@ -1,201 +1,454 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
-    margin: 0;
-    padding: 0;
-    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
-    background: #f7f9fa;
-    color: #222;
-}
-.main-layout {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: flex-start;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
-    background: #f7f9fa;
+    color: #333;
+    line-height: 1.6;
 }
-.left-panel {
-    flex: 0 0 340px;
-    max-width: 340px;
-    min-width: 260px;
-    padding: 40px 24px 40px 24px;
-    background: #fff;
-    border-right: 1px solid #e5e7eb;
-    box-sizing: border-box;
+
+.mobile-container {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 16px;
 }
-.right-panel {
-    flex: 1 1 0;
-    min-width: 0;
-    padding: 40px 32px 40px 32px;
+
+/* 状态区域 */
+.status-section {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.status-section h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 1.4em;
+    font-weight: 600;
+}
+
+.status-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.status-item {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    background: #f7f9fa;
-}
-.title {
-    text-align: left;
-    font-size: 1.7em;
-    color: #229ed9;
-    margin-bottom: 32px;
-    font-weight: 600;
-    letter-spacing: 1px;
-}
-.card {
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: none;
-    padding: 24px 18px;
-    margin-bottom: 24px;
-    border: 1px solid #e5e7eb;
-}
-h2 {
-    margin-top: 0;
-    color: #229ed9;
-    font-size: 1.1em;
-    letter-spacing: 1px;
-    font-weight: 500;
-}
-.form label {
-    display: block;
-    margin-bottom: 10px;
-    font-size: 1em;
-    color: #555;
-    font-weight: 500;
-}
-.form input {
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    padding: 10px 12px;
-    width: 100%;
-    background: #f7f9fa;
-    font-size: 1em;
-    outline: none;
-    margin-bottom: 16px;
-    transition: border 0.2s;
-    box-sizing: border-box;
-}
-.form input:focus {
-    border: 1.5px solid #229ed9;
-    background: #fff;
-}
-.form .btn {
-    background: #229ed9;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    padding: 10px 0;
-    font-size: 1em;
-    cursor: pointer;
-    width: 100%;
-    margin-top: 8px;
-    font-weight: 600;
-    transition: background 0.2s;
-}
-.form .btn:active {
-    background: #1787b8;
-}
-.form .btn:disabled {
-    background: #e0e0e0;
-    color: #aaa;
-    cursor: not-allowed;
-}
-.form-inline {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-}
-.form-inline input {
-    flex: 1;
-    min-width: 0;
-}
-.group-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-.group-list li {
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.bubble {
-    display: inline-block;
-    background: #e8f4fa;
-    color: #229ed9;
-    border-radius: 4px;
-    padding: 4px 12px;
-    font-size: 1em;
-    font-weight: 500;
-}
-.btn-small {
-    padding: 4px 12px;
-    font-size: 0.95em;
-    border-radius: 4px;
-    background: #e8f4fa;
-    color: #229ed9;
-    border: 1px solid #229ed9;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-.btn-small:active {
-    background: #229ed9;
-    color: #fff;
-}
-.btn-stop {
-    background: #e5e7eb;
-    color: #229ed9;
-    border: 1px solid #229ed9;
-}
-.log-card {
-    height: 100%;
-    min-height: 400px;
-    display: flex;
-    flex-direction: column;
-    background: #fff;
-    border-radius: 8px;
-    border: 1px solid #e5e7eb;
-}
-.log-area {
-    flex: 1 1 0;
-    min-height: 300px;
-    max-height: 70vh;
-    overflow-y: auto;
-    background: #f7f9fa;
-    border-radius: 4px;
+    gap: 8px;
     padding: 12px;
-    box-shadow: none;
-    border: 1px solid #e5e7eb;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e1e8ed;
 }
+
+.status-label {
+    font-size: 0.9em;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.status-value {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.status-running {
+    color: #00b894;
+}
+
+.status-stopped {
+    color: #e74c3c;
+}
+
+.status-valid {
+    color: #00b894;
+}
+
+.status-invalid {
+    color: #e74c3c;
+}
+
+.status-checking {
+    color: #f39c12;
+}
+
+.status-error {
+    color: #e74c3c;
+}
+
+/* 配置区域 */
+.config-section {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.config-section h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 1.4em;
+    font-weight: 600;
+}
+
+.config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-weight: 600;
+    color: #34495e;
+    font-size: 0.95em;
+}
+
+.form-group input {
+    padding: 12px 16px;
+    border: 2px solid #e1e8ed;
+    border-radius: 12px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    background: #f8f9fa;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* 群组管理 */
+.group-section {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.group-section h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 1.4em;
+    font-weight: 600;
+}
+
+.group-form {
+    margin-bottom: 20px;
+}
+
+.input-group {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.group-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #e1e8ed;
+    border-radius: 12px;
+    font-size: 16px;
+    background: #f8f9fa;
+}
+
+.group-input:focus {
+    outline: none;
+    border-color: #667eea;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.group-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.group-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e1e8ed;
+}
+
+.group-id {
+    font-weight: 600;
+    color: #2c3e50;
+    font-family: 'Courier New', monospace;
+}
+
+/* 日志查询 */
+.log-query-section {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.log-query-section h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 1.4em;
+    font-weight: 600;
+}
+
+.log-query-controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: center;
+}
+
+.log-select {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #e1e8ed;
+    border-radius: 12px;
+    font-size: 16px;
+    background: #f8f9fa;
+}
+
+.log-textarea {
+    width: 100%;
+    height: 120px;
+    padding: 16px;
+    border: 2px solid #e1e8ed;
+    border-radius: 12px;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    background: #f8f9fa;
+    resize: vertical;
+}
+
+.log-textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    background: #fff;
+}
+
+/* 实时日志 */
+.log-section {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.log-header h2 {
+    color: #2c3e50;
+    font-size: 1.4em;
+    font-weight: 600;
+}
+
+.log-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.log-area {
+    height: 300px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid #e1e8ed;
+}
+
 .log-bubble {
     background: #fff;
-    color: #333;
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    font-size: 0.98em;
-    border: 1px solid #e5e7eb;
-    word-break: break-all;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    border-left: 4px solid #667eea;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    white-space: pre-wrap;
 }
-@media (max-width: 900px) {
-    .main-layout {
+
+.log-placeholder {
+    color: #888;
+    text-align: center;
+    margin-top: 40px;
+    font-style: italic;
+}
+
+/* 按钮样式 */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.btn-add {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: white;
+    padding: 12px 16px;
+}
+
+.btn-add:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(243, 156, 18, 0.3);
+}
+
+.btn-delete {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: white;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+.btn-delete:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(231, 76, 60, 0.3);
+}
+
+.btn-query {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    color: white;
+    padding: 12px 16px;
+}
+
+.btn-query:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(155, 89, 182, 0.3);
+}
+
+.btn-small {
+    padding: 8px 12px;
+    font-size: 14px;
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+    color: white;
+}
+
+.btn-small:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(149, 165, 166, 0.3);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .mobile-container {
+        padding: 12px;
+    }
+    
+    .status-section,
+    .config-section,
+    .group-section,
+    .log-query-section,
+    .log-section {
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+    
+    .status-content {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .input-group {
         flex-direction: column;
+        gap: 10px;
     }
-    .left-panel, .right-panel {
-        max-width: 100vw;
-        padding: 12px 2vw 12px 2vw;
+    
+    .log-query-controls {
+        flex-direction: column;
+        gap: 10px;
     }
-    .left-panel {
-        min-width: 0;
+    
+    .log-header {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+    
+    .log-controls {
         width: 100%;
-        border-right: none;
-        border-bottom: 1px solid #e5e7eb;
+        justify-content: space-between;
     }
-    .right-panel {
-        width: 100%;
-        min-width: 0;
+}
+
+@media (max-width: 480px) {
+    .btn {
+        font-size: 14px;
+        padding: 10px 16px;
+        min-height: 44px;
     }
-    .log-card {
-        min-height: 200px;
+    
+    .log-area {
+        height: 250px;
+    }
+    
+    .group-item {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+    
+    .status-item {
+        padding: 10px;
     }
 } 

@@ -26,17 +26,11 @@ class BotManager:
         self.running = False
 
     async def _run(self):
-        proxy = None
-        # 仅当 protocol/host/port 都填写时才启用代理
-        if self.config.proxy_protocol and self.config.proxy_host and self.config.proxy_port:
-            proxy = (self.config.proxy_protocol, self.config.proxy_host, int(self.config.proxy_port))
         client_args = {
             'session': f'session_{self.config.phone_number}',
             'api_id': self.config.api_id,
             'api_hash': self.config.api_hash
         }
-        if proxy:
-            client_args['proxy'] = proxy
         group_id_list = [int(g.group_id) for g in self.groups]
         async with TelegramClient(**client_args) as client:
             # 检查 session 是否已登录
