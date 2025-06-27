@@ -10,6 +10,7 @@
 - 🔔 Bark推送通知
 - 📝 实时日志和历史日志查询
 - 👥 群组管理功能
+- 🔄 自动部署支持
 
 ## 部署到Northflank
 
@@ -27,7 +28,60 @@
    - **端口**: `8000`
    - **环境变量**: 根据需要设置
 
-### 3. 配置Telegram API
+### 3. 配置自动部署
+
+#### 方法一：使用Northflank内置的Auto Deploy（推荐）
+
+1. **进入Service设置**
+   - 在Northflank控制台中，点击你的Service
+   - 进入"Settings"标签页
+
+2. **启用Auto Deploy**
+   - 找到"Deployment"部分
+   - 启用"Auto Deploy"选项
+   - 选择触发分支（通常是`main`）
+   - 选择触发条件（推荐选择`Push`）
+
+3. **验证设置**
+   - Northflank会自动在你的GitHub仓库中创建webhook
+   - 你可以在GitHub仓库的Settings > Webhooks中查看
+
+#### 方法二：使用GitHub Actions
+
+1. **配置GitHub Secrets**
+   - 进入GitHub仓库的Settings > Secrets and variables > Actions
+   - 添加以下secrets：
+     - `NORTHFLANK_TOKEN`: 你的Northflank API token
+     - `NORTHFLANK_PROJECT_ID`: 项目ID
+     - `NORTHFLANK_SERVICE_ID`: 服务ID
+
+2. **获取Northflank配置信息**
+   ```bash
+   # 安装Northflank CLI
+   npm install -g @northflank/cli
+   
+   # 登录
+   northflank auth:login
+   
+   # 获取项目和服务信息
+   northflank project:list
+   northflank service:list
+   ```
+
+3. **推送代码触发部署**
+   - 每次推送到`main`分支时，GitHub Actions会自动触发部署
+
+#### 方法三：使用部署脚本
+
+```bash
+# 给脚本添加执行权限
+chmod +x deploy.sh
+
+# 运行部署脚本
+./deploy.sh
+```
+
+### 4. 配置Telegram API
 
 在Northflank控制台中，通过SSH连接到容器：
 
@@ -53,7 +107,7 @@ nano telegram_config.json
 }
 ```
 
-### 4. Telegram登录流程
+### 5. Telegram登录流程
 
 #### 方法一：使用登录脚本（推荐）
 
@@ -98,7 +152,7 @@ asyncio.run(login())
 "
 ```
 
-### 5. 启动应用
+### 6. 启动应用
 
 登录成功后，应用会自动启动。你也可以手动启动：
 
@@ -110,9 +164,36 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000
 nohup python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
 ```
 
-### 6. 访问Web界面
+### 7. 访问Web界面
 
 在浏览器中访问：`https://your-northflank-domain.com`
+
+## 自动部署工作流
+
+### 开发流程
+
+1. **本地开发**
+   ```bash
+   # 修改代码
+   git add .
+   git commit -m "你的修改"
+   ```
+
+2. **推送代码**
+   ```bash
+   git push origin main
+   ```
+
+3. **自动部署**
+   - 如果配置了Auto Deploy，Northflank会自动检测并部署
+   - 如果使用GitHub Actions，会在Actions中看到部署进度
+   - 如果使用部署脚本，会显示部署状态
+
+### 部署状态检查
+
+- **Northflank控制台**: 查看部署历史和状态
+- **GitHub Actions**: 查看部署日志和错误信息
+- **应用日志**: 检查应用是否正常运行
 
 ## 使用说明
 
@@ -168,6 +249,22 @@ chmod 755 *.py
 chmod 644 *.json
 ```
 
+### 自动部署问题
+
+如果自动部署失败：
+
+1. **检查GitHub Webhook**
+   - 进入GitHub仓库的Settings > Webhooks
+   - 查看webhook是否正常
+
+2. **检查Northflank设置**
+   - 确认Auto Deploy已启用
+   - 检查分支配置是否正确
+
+3. **查看部署日志**
+   - 在Northflank控制台查看部署历史
+   - 检查错误信息
+
 ## 文件结构
 
 ```
@@ -177,9 +274,13 @@ tg-signal-trading-bot/
 ├── models.py            # 数据库模型
 ├── database.py          # 数据库配置
 ├── login_telegram.py    # Telegram登录脚本
+├── start.sh             # 启动脚本
+├── deploy.sh            # 部署脚本
 ├── telegram_config.json # 配置文件
 ├── requirements.txt     # Python依赖
 ├── Dockerfile          # Docker配置
+├── .github/workflows/   # GitHub Actions
+│   └── deploy.yml
 ├── static/             # 静态文件
 │   └── main.css
 └── templates/          # HTML模板
@@ -192,6 +293,7 @@ tg-signal-trading-bot/
 2. **Session文件**: 登录成功后会在当前目录生成session文件，请妥善保管
 3. **API限制**: 注意Telegram API的使用限制
 4. **隐私**: 确保遵守相关法律法规和隐私政策
+5. **自动部署**: 确保生产环境的配置正确，避免自动部署导致的问题
 
 ## 技术支持
 
@@ -199,4 +301,5 @@ tg-signal-trading-bot/
 1. 配置文件是否正确
 2. 网络连接是否正常
 3. Session是否有效
-4. 日志文件中的错误信息 
+4. 日志文件中的错误信息
+5. 自动部署配置是否正确 

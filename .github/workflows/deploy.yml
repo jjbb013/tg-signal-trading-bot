@@ -1,0 +1,31 @@
+name: Deploy to Northflank
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Deploy to Northflank
+      uses: northflank/deploy-action@v1
+      with:
+        # Northflank配置
+        northflank-token: ${{ secrets.NORTHFLANK_TOKEN }}
+        project-id: ${{ secrets.NORTHFLANK_PROJECT_ID }}
+        service-id: ${{ secrets.NORTHFLANK_SERVICE_ID }}
+        
+        # 部署配置
+        branch: ${{ github.ref_name }}
+        commit-sha: ${{ github.sha }}
+        
+        # 可选：等待部署完成
+        wait-for-deployment: true
+        timeout: 300 
