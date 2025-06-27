@@ -10,9 +10,8 @@ COPY requirements.txt ./
 # 安装依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 安装shellinabox和supervisor
-RUN apt-get update && apt-get install -y shellinabox supervisor \
-    && echo "root:333333" | chpasswd \
+# 安装supervisor
+RUN apt-get update && apt-get install -y supervisor \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 复制项目代码和supervisor配置
