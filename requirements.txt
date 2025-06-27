@@ -1,8 +1,1 @@
-fastapi
-uvicorn
-telethon
-sqlalchemy
-jinja2
-requests
-pytz
-python-multipart 
+telethon 

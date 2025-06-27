@@ -1,12 +1,6 @@
 {
-  "api_id": "24812421",
-  "api_hash": "63aad0252bfa371ea40cd8b6bfa1e304",
-  "phone_number": "+8613764176027",
-  "bark_api_key": "oZaeqGLJzRLSxW7dJqeACn",
-  "log_group_id": -4968047296,
-  "proxy": {
-    "protocol": "socks5",
-    "host": "127.0.0.1",
-    "port": 7890
-  }
-}
+  "api_id": "你的API_ID",
+  "api_hash": "你的API_HASH",
+  "phone_number": "你的手机号",
+  "log_group_id": "你的日志群组ID"
+} 
