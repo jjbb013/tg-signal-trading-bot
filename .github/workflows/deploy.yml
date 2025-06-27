@@ -38,8 +38,8 @@ jobs:
           exit 1
         fi
         
-        # 构建部署请求
-        DEPLOY_URL="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/${{ secrets.NORTHFLANK_SERVICE_ID }}/deployments"
+        # 构建部署请求 - 使用包含团队ID的路径
+        DEPLOY_URL="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_TEAM_ID }}/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/${{ secrets.NORTHFLANK_SERVICE_ID }}/deployments"
         
         echo "📡 请求URL: $DEPLOY_URL"
         

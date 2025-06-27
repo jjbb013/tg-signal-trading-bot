@@ -55,8 +55,8 @@ sleep 5
 # 触发部署 - 使用从GitHub直接部署的API
 echo "🔄 触发Northflank部署..."
 
-# 使用deployments API端点
-DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
+# 尝试包含团队ID的API路径
+DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_TEAM_ID/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
 
 echo "📡 请求URL: $DEPLOY_URL"
 echo "🔑 使用Token: ${NORTHFLANK_TOKEN:0:20}..."
