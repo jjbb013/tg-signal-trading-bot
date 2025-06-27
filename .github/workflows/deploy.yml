@@ -51,7 +51,7 @@ jobs:
           -H "Content-Type: application/json" \
           -d "{
             \"name\": \"${{ secrets.NORTHFLANK_SERVICE_ID }}\",
-            \"description\": \"Telegram监听机器人服务 - Auto deploy from GitHub Actions\",
+            \"description\": \"Telegram Signal Trading Bot Service - Auto deploy from GitHub Actions\",
             \"billing\": {
               \"deploymentPlan\": \"nf-compute-20\"
             },

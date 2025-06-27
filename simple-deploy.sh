@@ -72,7 +72,7 @@ RESPONSE=$(curl -s -w "%{http_code}" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\": \"$NORTHFLANK_SERVICE_ID\",
-    \"description\": \"Telegram监听机器人服务\",
+    \"description\": \"Telegram Signal Trading Bot Service\",
     \"billing\": {
       \"deploymentPlan\": \"nf-compute-20\"
     },
