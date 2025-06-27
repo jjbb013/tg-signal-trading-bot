@@ -52,11 +52,11 @@ echo ""
 echo "⏳ 等待GitHub处理..."
 sleep 5
 
-# 触发部署 - 使用正确的API路径
+# 触发部署 - 使用从GitHub直接部署的API
 echo "🔄 触发Northflank部署..."
 
-# 根据官方文档，使用正确的deployment端点
-DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployment"
+# 使用deployments API端点
+DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
 
 echo "📡 请求URL: $DEPLOY_URL"
 echo "🔑 使用Token: ${NORTHFLANK_TOKEN:0:20}..."
@@ -65,17 +65,15 @@ echo "🔑 使用Token: ${NORTHFLANK_TOKEN:0:20}..."
 TEMP_RESPONSE=$(mktemp)
 TEMP_HEADERS=$(mktemp)
 
-# 根据官方文档，使用正确的payload格式
+# 使用正确的deployments API格式
 RESPONSE=$(curl -s -w "%{http_code}" \
   -X POST \
   -H "Authorization: Bearer $NORTHFLANK_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"internal\": {
-      \"id\": \"$NORTHFLANK_SERVICE_ID\",
-      \"branch\": \"main\",
-      \"buildSHA\": \"$(git rev-parse HEAD)\"
-    }
+    \"branch\": \"main\",
+    \"commitSha\": \"$(git rev-parse HEAD)\",
+    \"message\": \"Manual deploy from script - $(date)\"
   }" \
   "$DEPLOY_URL" \
   -o "$TEMP_RESPONSE" \
@@ -100,18 +98,21 @@ else
     echo "❌ 部署失败"
     echo ""
     echo "🔍 可能的原因："
-    echo "1. 项目ID或服务ID不正确"
+    echo "1. 团队ID、项目ID或服务ID不正确"
     echo "2. API Token无效或过期"
     echo "3. 权限不足"
-    echo "4. 服务类型不是部署服务"
+    echo "4. API路径格式错误"
+    echo "5. Deployment Service未配置GitHub源"
     echo ""
     echo "💡 建议："
-    echo "1. 检查Northflank控制台中的项目和服务ID"
+    echo "1. 检查Northflank控制台中的URL格式"
     echo "2. 重新生成API Token"
     echo "3. 确认Token有部署权限"
-    echo "4. 确认服务是部署服务类型"
+    echo "4. 检查API文档确认路径格式"
+    echo "5. 确认Deployment Service已配置GitHub仓库源"
     echo ""
     echo "🔧 调试信息："
+    echo "团队ID: $NORTHFLANK_TEAM_ID"
     echo "项目ID: $NORTHFLANK_PROJECT_ID"
     echo "服务ID: $NORTHFLANK_SERVICE_ID"
     echo "Token前缀: ${NORTHFLANK_TOKEN:0:20}..."
