@@ -10,10 +10,8 @@ COPY requirements.txt ./
 # 安装依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 安装gotty和supervisor
-RUN apt-get update && apt-get install -y curl ca-certificates supervisor \
-    && curl -Lo /usr/local/bin/gotty https://github.com/yudai/gotty/releases/download/v1.4.0/gotty_linux_amd64 \
-    && chmod +x /usr/local/bin/gotty \
+# 安装shellinabox和supervisor
+RUN apt-get update && apt-get install -y shellinabox supervisor \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 复制项目代码和supervisor配置
