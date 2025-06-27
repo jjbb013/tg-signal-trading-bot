@@ -22,5 +22,5 @@ COPY . .
 # 暴露web终端端口
 EXPOSE 8080
 
-# 启动ttyd，用户名user，密码333333，shell为bash
-CMD ["ttyd", "-p", "8080", "-c", "user:333333", "bash"] 
+# 启动ttyd，web终端自动运行监听脚本，结束后进入bash
+CMD ["ttyd", "-p", "8080", "-c", "user:333333", "bash", "-c", "python main.py; exec bash"] 
