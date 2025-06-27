@@ -52,27 +52,30 @@ echo ""
 echo "⏳ 等待GitHub处理..."
 sleep 5
 
-# 触发部署 - 尝试不同的API路径格式
+# 触发部署 - 使用正确的API路径
 echo "🔄 触发Northflank部署..."
 
-# 尝试第一种路径格式
-DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
+# 根据官方文档，使用正确的deployment端点
+DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployment"
 
-echo "📡 尝试路径1: $DEPLOY_URL"
+echo "📡 请求URL: $DEPLOY_URL"
 echo "🔑 使用Token: ${NORTHFLANK_TOKEN:0:20}..."
 
 # 使用临时文件存储响应
 TEMP_RESPONSE=$(mktemp)
 TEMP_HEADERS=$(mktemp)
 
+# 根据官方文档，使用正确的payload格式
 RESPONSE=$(curl -s -w "%{http_code}" \
   -X POST \
   -H "Authorization: Bearer $NORTHFLANK_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"branch\": \"main\",
-    \"commitSha\": \"$(git rev-parse HEAD)\",
-    \"message\": \"Manual deploy from script - $(date)\"
+    \"internal\": {
+      \"id\": \"$NORTHFLANK_SERVICE_ID\",
+      \"branch\": \"main\",
+      \"buildSHA\": \"$(git rev-parse HEAD)\"
+    }
   }" \
   "$DEPLOY_URL" \
   -o "$TEMP_RESPONSE" \
@@ -84,35 +87,6 @@ HTTP_CODE="$RESPONSE"
 
 echo "📋 响应代码: $HTTP_CODE"
 echo "📋 响应内容: $RESPONSE_BODY"
-
-# 如果第一种路径失败，尝试第二种路径格式
-if [ "$HTTP_CODE" -eq 404 ]; then
-    echo "🔄 路径1失败，尝试路径2..."
-    
-    DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_TEAM_ID/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
-    
-    echo "📡 尝试路径2: $DEPLOY_URL"
-    
-    RESPONSE=$(curl -s -w "%{http_code}" \
-      -X POST \
-      -H "Authorization: Bearer $NORTHFLANK_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"branch\": \"main\",
-        \"commitSha\": \"$(git rev-parse HEAD)\",
-        \"message\": \"Manual deploy from script - $(date)\"
-      }" \
-      "$DEPLOY_URL" \
-      -o "$TEMP_RESPONSE" \
-      -D "$TEMP_HEADERS")
-    
-    # 读取响应内容
-    RESPONSE_BODY=$(cat "$TEMP_RESPONSE")
-    HTTP_CODE="$RESPONSE"
-    
-    echo "📋 响应代码: $HTTP_CODE"
-    echo "📋 响应内容: $RESPONSE_BODY"
-fi
 
 # 清理临时文件
 rm -f "$TEMP_RESPONSE" "$TEMP_HEADERS"
@@ -126,21 +100,21 @@ else
     echo "❌ 部署失败"
     echo ""
     echo "🔍 可能的原因："
-    echo "1. 团队ID、项目ID或服务ID不正确"
+    echo "1. 项目ID或服务ID不正确"
     echo "2. API Token无效或过期"
     echo "3. 权限不足"
-    echo "4. API路径格式错误"
+    echo "4. 服务类型不是部署服务"
     echo ""
     echo "💡 建议："
-    echo "1. 检查Northflank控制台中的URL格式"
+    echo "1. 检查Northflank控制台中的项目和服务ID"
     echo "2. 重新生成API Token"
     echo "3. 确认Token有部署权限"
-    echo "4. 检查API文档确认路径格式"
+    echo "4. 确认服务是部署服务类型"
     echo ""
     echo "🔧 调试信息："
-    echo "团队ID: $NORTHFLANK_TEAM_ID"
     echo "项目ID: $NORTHFLANK_PROJECT_ID"
     echo "服务ID: $NORTHFLANK_SERVICE_ID"
     echo "Token前缀: ${NORTHFLANK_TOKEN:0:20}..."
+    echo "Commit SHA: $(git rev-parse HEAD)"
     exit 1
 fi 
