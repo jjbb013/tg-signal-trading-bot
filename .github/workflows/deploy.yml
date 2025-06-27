@@ -38,21 +38,47 @@ jobs:
           exit 1
         fi
         
-        # 构建部署请求 - 使用包含团队ID的路径
-        DEPLOY_URL="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_TEAM_ID }}/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/${{ secrets.NORTHFLANK_SERVICE_ID }}/deployments"
+        # 构建部署请求 - 使用正确的API端点
+        DEPLOY_URL="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/deployment"
         
         echo "📡 请求URL: $DEPLOY_URL"
         
-        # 创建部署
+        # 创建部署 - 使用PUT请求和正确的payload格式
         echo "📦 创建部署..."
         RESPONSE=$(curl -s -w "\n%{http_code}" \
-          -X POST \
+          -X PUT \
           -H "Authorization: Bearer ${{ secrets.NORTHFLANK_TOKEN }}" \
           -H "Content-Type: application/json" \
           -d "{
-            \"branch\": \"${{ github.ref_name }}\",
-            \"commitSha\": \"${{ github.sha }}\",
-            \"message\": \"Auto deploy from GitHub Actions - ${{ github.event.head_commit.message }}\"
+            \"name\": \"${{ secrets.NORTHFLANK_SERVICE_ID }}\",
+            \"description\": \"Telegram监听机器人服务 - Auto deploy from GitHub Actions\",
+            \"billing\": {
+              \"deploymentPlan\": \"nf-compute-20\"
+            },
+            \"deployment\": {
+              \"instances\": 1,
+              \"docker\": {
+                \"configType\": \"default\"
+              },
+              \"storage\": {
+                \"ephemeralStorage\": {
+                  \"storageSize\": 1024
+                }
+              },
+              \"internal\": {
+                \"id\": \"${{ secrets.NORTHFLANK_SERVICE_ID }}\",
+                \"branch\": \"${{ github.ref_name }}\",
+                \"buildId\": \"${{ github.sha }}\"
+              }
+            },
+            \"ports\": [
+              {
+                \"name\": \"p01\",
+                \"internalPort\": 8080,
+                \"public\": true,
+                \"protocol\": \"HTTP\"
+              }
+            ]
           }" \
           "$DEPLOY_URL")
         
@@ -60,7 +86,7 @@ jobs:
         HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
         RESPONSE_BODY=$(echo "$RESPONSE" | head -n -1)
         
-        if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
+        if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
           echo "✅ 部署请求已发送"
           echo "📋 响应: $RESPONSE_BODY"
           

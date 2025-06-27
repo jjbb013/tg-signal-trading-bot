@@ -52,11 +52,11 @@ echo ""
 echo "⏳ 等待GitHub处理..."
 sleep 5
 
-# 触发部署 - 使用从GitHub直接部署的API
+# 触发部署 - 使用正确的Northflank API
 echo "🔄 触发Northflank部署..."
 
-# 尝试包含团队ID的API路径
-DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_TEAM_ID/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
+# 根据API文档，使用正确的端点
+DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_PROJECT_ID/services/deployment"
 
 echo "📡 请求URL: $DEPLOY_URL"
 echo "🔑 使用Token: ${NORTHFLANK_TOKEN:0:20}..."
@@ -65,15 +65,41 @@ echo "🔑 使用Token: ${NORTHFLANK_TOKEN:0:20}..."
 TEMP_RESPONSE=$(mktemp)
 TEMP_HEADERS=$(mktemp)
 
-# 使用正确的deployments API格式
+# 根据API文档，使用PUT请求和正确的payload格式
 RESPONSE=$(curl -s -w "%{http_code}" \
-  -X POST \
+  -X PUT \
   -H "Authorization: Bearer $NORTHFLANK_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"branch\": \"main\",
-    \"commitSha\": \"$(git rev-parse HEAD)\",
-    \"message\": \"Manual deploy from script - $(date)\"
+    \"name\": \"$NORTHFLANK_SERVICE_ID\",
+    \"description\": \"Telegram监听机器人服务\",
+    \"billing\": {
+      \"deploymentPlan\": \"nf-compute-20\"
+    },
+    \"deployment\": {
+      \"instances\": 1,
+      \"docker\": {
+        \"configType\": \"default\"
+      },
+      \"storage\": {
+        \"ephemeralStorage\": {
+          \"storageSize\": 1024
+        }
+      },
+      \"internal\": {
+        \"id\": \"$NORTHFLANK_SERVICE_ID\",
+        \"branch\": \"main\",
+        \"buildId\": \"$(git rev-parse HEAD)\"
+      }
+    },
+    \"ports\": [
+      {
+        \"name\": \"p01\",
+        \"internalPort\": 8080,
+        \"public\": true,
+        \"protocol\": \"HTTP\"
+      }
+    ]
   }" \
   "$DEPLOY_URL" \
   -o "$TEMP_RESPONSE" \
@@ -89,7 +115,7 @@ echo "📋 响应内容: $RESPONSE_BODY"
 # 清理临时文件
 rm -f "$TEMP_RESPONSE" "$TEMP_HEADERS"
 
-if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
+if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
     echo "✅ 部署请求已发送"
     echo ""
     echo "🎉 部署完成！"
