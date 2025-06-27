@@ -79,7 +79,13 @@ if __name__ == "__main__":
             sender_id = getattr(sender, 'id', '未知ID')
             log_line = f"[{shanghai_time}] 群组: {group_title} (ID: {group_id}) | 发送者: {sender_name} (ID: {sender_id})\n消息: {message_text}\n"
             print(log_line)
-            # 检测交易信号
+            # 自动转发所有消息到日志群组
+            if log_group_id:
+                try:
+                    await client.send_message(int(log_group_id), log_line)
+                except Exception as e:
+                    print(f"转发到日志群组失败: {e}")
+            # 检测交易信号并Bark推送
             if '交易' in message_text or 'signal' in message_text.lower():
                 bark_message = f"时间: {shanghai_time}\n群组: {group_title}\n消息: {message_text}"
                 if bark_api_key:
