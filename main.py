@@ -258,4 +258,79 @@ def get_log_file(date: str):
         return JSONResponse({"content": "日志文件不存在"})
     with open(log_file, 'r', encoding='utf-8') as f:
         content = f.read()
-    return JSONResponse({"content": content}) 
+    return JSONResponse({"content": content})
+
+@app.get("/bot/status")
+def get_bot_status():
+    """获取机器人运行状态"""
+    global bot_manager
+    db = next(get_db())
+    config = db.query(Config).first()
+    
+    running = False
+    if bot_manager and bot_manager.running:
+        running = True
+    elif config and config.is_running:
+        # 如果数据库显示运行中但bot_manager不存在，说明可能异常停止了
+        config.is_running = False
+        db.commit()
+        running = False
+    
+    return JSONResponse({
+        "running": running,
+        "groups_count": db.query(Group).count()
+    })
+
+@app.get("/session/status")
+async def get_session_status():
+    """检查Telegram Session状态"""
+    db = next(get_db())
+    config = db.query(Config).first()
+    
+    if not config or not config.phone_number or not config.api_id or not config.api_hash:
+        return JSONResponse({
+            "valid": False,
+            "error": "配置不完整",
+            "bark_sent": False
+        })
+    
+    try:
+        async with TelegramClient(f'session_{config.phone_number}', config.api_id, config.api_hash) as client:
+            is_authorized = await client.is_user_authorized()
+            
+            if not is_authorized:
+                # Session无效，发送Bark通知
+                bark_sent = False
+                if config.bark_api_key:
+                    try:
+                        import requests
+                        bark_url = f"https://api.day.app/{config.bark_api_key}/"
+                        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+                        payload = {
+                            'title': 'TG Signal - Session失效',
+                            'body': f"Telegram Session已失效，请重新登录\n时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                            'group': 'TG Signal',
+                        }
+                        requests.post(bark_url, headers=headers, data=payload)
+                        bark_sent = True
+                    except Exception as e:
+                        print(f"Bark通知发送失败: {e}")
+                
+                return JSONResponse({
+                    "valid": False,
+                    "error": "Session已失效",
+                    "bark_sent": bark_sent
+                })
+            
+            return JSONResponse({
+                "valid": True,
+                "error": None,
+                "bark_sent": False
+            })
+            
+    except Exception as e:
+        return JSONResponse({
+            "valid": False,
+            "error": f"检查Session失败: {str(e)}",
+            "bark_sent": False
+        }) 
