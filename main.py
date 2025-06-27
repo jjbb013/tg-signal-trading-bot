@@ -134,9 +134,9 @@ def send_bark_notification(bark_api_key, title, message):
 # 提取交易信息
 def extract_trade_info(message):
     logger.debug(f"正在从消息中提取交易信息: {message[:100]}...")
-    action_pattern = r"执行交易:(.+?)(?= \\d+\\.\\d+\\w+)"
+    action_pattern = r"执行交易:(.+?)(?= \d+\.\d+\w+)"
     action_match = re.search(action_pattern, message)
-    symbol_pattern = r"策略当前交易对:(\\w+USDT\\.P)"
+    symbol_pattern = r"策略当前交易对:(\w+USDT\.P)"
     symbol_match = re.search(symbol_pattern, message)
     if action_match and symbol_match:
         action = action_match.group(1).strip()
