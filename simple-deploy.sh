@@ -52,11 +52,13 @@ echo ""
 echo "⏳ 等待GitHub处理..."
 sleep 5
 
-# 触发部署
+# 触发部署 - 尝试不同的API路径格式
 echo "🔄 触发Northflank部署..."
-DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_TEAM_ID/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
 
-echo "📡 请求URL: $DEPLOY_URL"
+# 尝试第一种路径格式
+DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
+
+echo "📡 尝试路径1: $DEPLOY_URL"
 echo "🔑 使用Token: ${NORTHFLANK_TOKEN:0:20}..."
 
 # 使用临时文件存储响应
@@ -83,6 +85,35 @@ HTTP_CODE="$RESPONSE"
 echo "📋 响应代码: $HTTP_CODE"
 echo "📋 响应内容: $RESPONSE_BODY"
 
+# 如果第一种路径失败，尝试第二种路径格式
+if [ "$HTTP_CODE" -eq 404 ]; then
+    echo "🔄 路径1失败，尝试路径2..."
+    
+    DEPLOY_URL="https://api.northflank.com/v1/projects/$NORTHFLANK_TEAM_ID/$NORTHFLANK_PROJECT_ID/services/$NORTHFLANK_SERVICE_ID/deployments"
+    
+    echo "📡 尝试路径2: $DEPLOY_URL"
+    
+    RESPONSE=$(curl -s -w "%{http_code}" \
+      -X POST \
+      -H "Authorization: Bearer $NORTHFLANK_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"branch\": \"main\",
+        \"commitSha\": \"$(git rev-parse HEAD)\",
+        \"message\": \"Manual deploy from script - $(date)\"
+      }" \
+      "$DEPLOY_URL" \
+      -o "$TEMP_RESPONSE" \
+      -D "$TEMP_HEADERS")
+    
+    # 读取响应内容
+    RESPONSE_BODY=$(cat "$TEMP_RESPONSE")
+    HTTP_CODE="$RESPONSE"
+    
+    echo "📋 响应代码: $HTTP_CODE"
+    echo "📋 响应内容: $RESPONSE_BODY"
+fi
+
 # 清理临时文件
 rm -f "$TEMP_RESPONSE" "$TEMP_HEADERS"
 
@@ -105,5 +136,11 @@ else
     echo "2. 重新生成API Token"
     echo "3. 确认Token有部署权限"
     echo "4. 检查API文档确认路径格式"
+    echo ""
+    echo "🔧 调试信息："
+    echo "团队ID: $NORTHFLANK_TEAM_ID"
+    echo "项目ID: $NORTHFLANK_PROJECT_ID"
+    echo "服务ID: $NORTHFLANK_SERVICE_ID"
+    echo "Token前缀: ${NORTHFLANK_TOKEN:0:20}..."
     exit 1
 fi 

@@ -38,14 +38,14 @@ jobs:
           exit 1
         fi
         
-        # 构建部署请求
-        DEPLOY_URL="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_TEAM_ID }}/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/${{ secrets.NORTHFLANK_SERVICE_ID }}/deployments"
+        # 尝试不同的API路径格式
+        echo "🔄 尝试部署..."
         
-        echo "📡 请求URL: $DEPLOY_URL"
+        # 路径1: 不包含团队ID
+        DEPLOY_URL_1="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/${{ secrets.NORTHFLANK_SERVICE_ID }}/deployments"
+        echo "📡 尝试路径1: $DEPLOY_URL_1"
         
-        # 创建部署
-        echo "📦 创建部署..."
-        RESPONSE=$(curl -s -w "\n%{http_code}" \
+        RESPONSE_1=$(curl -s -w "\n%{http_code}" \
           -X POST \
           -H "Authorization: Bearer ${{ secrets.NORTHFLANK_TOKEN }}" \
           -H "Content-Type: application/json" \
@@ -54,27 +54,54 @@ jobs:
             \"commitSha\": \"${{ github.sha }}\",
             \"message\": \"Auto deploy from GitHub Actions - ${{ github.event.head_commit.message }}\"
           }" \
-          "$DEPLOY_URL")
+          "$DEPLOY_URL_1")
         
-        # 解析响应
-        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-        RESPONSE_BODY=$(echo "$RESPONSE" | head -n -1)
+        HTTP_CODE_1=$(echo "$RESPONSE_1" | tail -n1)
+        RESPONSE_BODY_1=$(echo "$RESPONSE_1" | head -n -1)
         
-        if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
-          echo "✅ 部署请求已发送"
-          echo "📋 响应: $RESPONSE_BODY"
-          
-          # 可选：等待部署完成
-          if [ "${{ vars.WAIT_FOR_DEPLOYMENT }}" = "true" ]; then
-            echo "⏳ 等待部署完成..."
-            sleep 30
-            echo "✅ 部署完成"
-          fi
-        else
-          echo "❌ 部署失败"
-          echo "📋 响应代码: $HTTP_CODE"
-          echo "📋 响应内容: $RESPONSE_BODY"
-          exit 1
+        echo "📋 路径1响应代码: $HTTP_CODE_1"
+        
+        if [ "$HTTP_CODE_1" -eq 201 ] || [ "$HTTP_CODE_1" -eq 200 ]; then
+          echo "✅ 路径1部署成功"
+          echo "📋 响应: $RESPONSE_BODY_1"
+          exit 0
         fi
         
-        echo "🎉 部署流程完成！" 
+        # 路径2: 包含团队ID
+        echo "🔄 路径1失败，尝试路径2..."
+        DEPLOY_URL_2="https://api.northflank.com/v1/projects/${{ secrets.NORTHFLANK_TEAM_ID }}/${{ secrets.NORTHFLANK_PROJECT_ID }}/services/${{ secrets.NORTHFLANK_SERVICE_ID }}/deployments"
+        echo "📡 尝试路径2: $DEPLOY_URL_2"
+        
+        RESPONSE_2=$(curl -s -w "\n%{http_code}" \
+          -X POST \
+          -H "Authorization: Bearer ${{ secrets.NORTHFLANK_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"branch\": \"${{ github.ref_name }}\",
+            \"commitSha\": \"${{ github.sha }}\",
+            \"message\": \"Auto deploy from GitHub Actions - ${{ github.event.head_commit.message }}\"
+          }" \
+          "$DEPLOY_URL_2")
+        
+        HTTP_CODE_2=$(echo "$RESPONSE_2" | tail -n1)
+        RESPONSE_BODY_2=$(echo "$RESPONSE_2" | head -n -1)
+        
+        echo "📋 路径2响应代码: $HTTP_CODE_2"
+        
+        if [ "$HTTP_CODE_2" -eq 201 ] || [ "$HTTP_CODE_2" -eq 200 ]; then
+          echo "✅ 路径2部署成功"
+          echo "📋 响应: $RESPONSE_BODY_2"
+          exit 0
+        fi
+        
+        # 如果两种路径都失败
+        echo "❌ 所有路径都失败"
+        echo "📋 路径1响应: $RESPONSE_BODY_1"
+        echo "📋 路径2响应: $RESPONSE_BODY_2"
+        echo ""
+        echo "🔍 可能的原因："
+        echo "1. 团队ID、项目ID或服务ID不正确"
+        echo "2. API Token无效或过期"
+        echo "3. 权限不足"
+        echo "4. API路径格式错误"
+        exit 1 
