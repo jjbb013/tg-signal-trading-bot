@@ -10,10 +10,10 @@ COPY requirements.txt ./
 # 安装依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 安装ttyd和supervisor
-RUN apt-get update && apt-get install -y wget ca-certificates supervisor \
-    && wget -O /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
-    && chmod +x /usr/local/bin/ttyd \
+# 安装gotty和supervisor
+RUN apt-get update && apt-get install -y curl ca-certificates supervisor \
+    && curl -Lo /usr/local/bin/gotty https://github.com/yudai/gotty/releases/download/v1.4.0/gotty_linux_amd64 \
+    && chmod +x /usr/local/bin/gotty \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 复制项目代码和supervisor配置
