@@ -181,6 +181,29 @@ python main.py
 - ✅ 日志分离：守护进程和前台模式日志分开管理
 - ✅ 优雅停止：支持信号处理和强制停止
 
+### 🚀 部署后操作
+**重要**: 部署完成后，机器人不会自动启动。需要手动SSH连接到实例后启动：
+
+```bash
+# 1. SSH连接到Northflank实例
+ssh -p <port> <username>@<host>
+
+# 2. 首次运行（需要Telegram登录）
+python main.py --login
+
+# 3. 启动守护进程（推荐生产环境）
+python main.py --daemon
+
+# 4. 或前台运行（开发测试）
+python main.py
+
+# 5. 使用supervisor管理（可选）
+./supervisor-manual-start.sh start    # 启动
+./supervisor-manual-start.sh stop     # 停止
+./supervisor-manual-start.sh status   # 查看状态
+./supervisor-manual-start.sh logs     # 查看日志
+```
+
 ---
 
 现在您的机器人支持完整的守护进程管理，可以在生产环境中稳定运行！所有代码已推送到远程仓库。
