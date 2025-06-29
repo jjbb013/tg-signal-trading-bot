@@ -512,8 +512,8 @@ class BotManager:
 
             self.client = TelegramClient(
                 SESSION_NAME,
-                TG_API_ID,
-                TG_API_HASH,
+                int(TG_API_ID),  # 确保是整数类型
+                str(TG_API_HASH),  # 确保是字符串类型
                 connection_retries=5,
                 timeout=30
             )
