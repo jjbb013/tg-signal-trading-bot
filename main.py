@@ -16,6 +16,9 @@ import time
 import threading
 import sys
 import json
+import subprocess
+import signal
+import argparse
 
 # 日志设置
 def setup_logger():
@@ -470,6 +473,8 @@ class BotManager:
         self.bot_thread = None
         self.last_start = None
         self.client = None
+        self.pid_file = 'tg_bot.pid'
+        self.log_file = 'logs/tg_bot_daemon.log'
 
     def start_bot(self):
         while not self.stop_event.is_set():
@@ -675,13 +680,190 @@ class BotManager:
             self.bot_thread.join(timeout=30)
         logger.info("机器人管理器已停止")
 
+    def start_with_daemon(self):
+        """以守护进程模式启动"""
+        try:
+            # 检查是否已经在运行
+            if self.is_running():
+                logger.error("机器人已经在运行中")
+                return False
+            
+            # 创建守护进程
+            pid = os.fork()
+            if pid > 0:
+                # 父进程退出
+                logger.info(f"守护进程已启动，PID: {pid}")
+                self.write_pid_file(pid)
+                return True
+            elif pid == 0:
+                # 子进程继续运行
+                os.setsid()  # 创建新的会话
+                os.umask(0)  # 设置文件创建掩码
+                
+                # 重定向标准输出和错误到日志文件
+                sys.stdout = open(self.log_file, 'a')
+                sys.stderr = sys.stdout
+                
+                # 启动机器人
+                self.start()
+                
+                # 保持运行
+                while True:
+                    time.sleep(1)
+            else:
+                logger.error("创建守护进程失败")
+                return False
+        except Exception as e:
+            logger.error(f"启动守护进程时出错: {e}")
+            return False
+
+    def stop_daemon(self):
+        """停止守护进程"""
+        try:
+            if not self.is_running():
+                logger.info("机器人未在运行")
+                return True
+            
+            pid = self.read_pid_file()
+            if pid:
+                os.kill(pid, signal.SIGTERM)
+                logger.info(f"已发送停止信号到进程 {pid}")
+                
+                # 等待进程结束
+                for i in range(10):
+                    if not self.is_running():
+                        logger.info("机器人已停止")
+                        self.remove_pid_file()
+                        return True
+                    time.sleep(1)
+                
+                # 强制杀死进程
+                os.kill(pid, signal.SIGKILL)
+                logger.info("强制停止机器人")
+                self.remove_pid_file()
+                return True
+            else:
+                logger.error("无法读取PID文件")
+                return False
+        except Exception as e:
+            logger.error(f"停止守护进程时出错: {e}")
+            return False
+
+    def is_running(self):
+        """检查机器人是否在运行"""
+        try:
+            pid = self.read_pid_file()
+            if not pid:
+                return False
+            
+            # 检查进程是否存在
+            os.kill(pid, 0)
+            return True
+        except (OSError, ProcessLookupError):
+            return False
+
+    def write_pid_file(self, pid):
+        """写入PID文件"""
+        try:
+            with open(self.pid_file, 'w') as f:
+                f.write(str(pid))
+        except Exception as e:
+            logger.error(f"写入PID文件失败: {e}")
+
+    def read_pid_file(self):
+        """读取PID文件"""
+        try:
+            if os.path.exists(self.pid_file):
+                with open(self.pid_file, 'r') as f:
+                    return int(f.read().strip())
+        except Exception as e:
+            logger.error(f"读取PID文件失败: {e}")
+        return None
+
+    def remove_pid_file(self):
+        """删除PID文件"""
+        try:
+            if os.path.exists(self.pid_file):
+                os.remove(self.pid_file)
+        except Exception as e:
+            logger.error(f"删除PID文件失败: {e}")
+
+    def status(self):
+        """检查机器人状态"""
+        if self.is_running():
+            pid = self.read_pid_file()
+            logger.info(f"机器人正在运行，PID: {pid}")
+            return True
+        else:
+            logger.info("机器人未在运行")
+            return False
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Telegram 交易机器人')
+    parser.add_argument('--daemon', action='store_true', help='以守护进程模式运行')
+    parser.add_argument('--stop', action='store_true', help='停止守护进程')
+    parser.add_argument('--status', action='store_true', help='检查守护进程状态')
+    parser.add_argument('--login', action='store_true', help='仅进行Telegram登录')
+    
+    args = parser.parse_args()
+    
     bot_manager = BotManager()
-    try:
-        bot_manager.start()
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("接收到键盘中断信号，正在关闭...")
-    finally:
-        bot_manager.stop() 
+    
+    if args.stop:
+        if bot_manager.stop_daemon():
+            print("守护进程已停止")
+        else:
+            print("停止守护进程失败")
+        sys.exit(0)
+    
+    if args.status:
+        if bot_manager.status():
+            print("守护进程正在运行")
+        else:
+            print("守护进程未运行")
+        sys.exit(0)
+    
+    if args.login:
+        # 仅进行登录
+        print(f"正在使用电话号码 {TG_PHONE_NUMBER} 登录Telegram...")
+        client = TelegramClient(
+            SESSION_NAME,
+            int(TG_API_ID),
+            str(TG_API_HASH),
+            connection_retries=5,
+            timeout=30
+        )
+        
+        try:
+            client.start()
+            print("登录成功！")
+            client.disconnect()
+        except Exception as e:
+            print(f"登录失败: {e}")
+        sys.exit(0)
+    
+    if args.daemon:
+        # 守护进程模式
+        try:
+            bot_manager.start_with_daemon()
+            # 守护进程会在这里继续运行
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("接收到中断信号，正在关闭...")
+        finally:
+            bot_manager.stop()
+    else:
+        # 普通模式
+        print("正在启动Telegram机器人...")
+        print(f"使用电话号码: {TG_PHONE_NUMBER}")
+        print("如果是第一次运行，请按照提示输入验证码")
+        
+        try:
+            bot_manager.start()
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("接收到键盘中断信号，正在关闭...")
+        finally:
+            bot_manager.stop() 
