@@ -4,5 +4,11 @@ requests    # 用于Bark推送HTTP请求
 pytz        # 时区处理
 python-okx         # OKX官方API库
 
+# 数据持久化依赖
+sqlalchemy  # SQL数据库ORM
+fastapi     # Web API框架
+uvicorn     # ASGI服务器
+python-multipart  # 文件上传支持
+
 # 可选依赖
 # logging     # 日志记录（如果需要） 

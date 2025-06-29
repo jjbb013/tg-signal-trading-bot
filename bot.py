@@ -19,41 +19,49 @@ import json
 import subprocess
 import signal
 import argparse
+from typing import Dict, List, Optional, Tuple
 
-# 导入数据持久化模块
 from models import create_tables
 from database import DatabaseManager, FileManager
 
-# 数据路径配置 - 支持Northflank Volumes
-DATA_PATH = os.getenv('DATA_PATH', '/data')  # Northflank Volumes 映射到 /data
-SESSION_PATH = os.path.join(DATA_PATH, 'sessions')
-LOGS_PATH = os.path.join(DATA_PATH, 'logs')
-DB_PATH = os.path.join(DATA_PATH, 'trading_bot.db')
-
-# 确保目录存在
-os.makedirs(DATA_PATH, exist_ok=True)
-os.makedirs(SESSION_PATH, exist_ok=True)
-os.makedirs(LOGS_PATH, exist_ok=True)
-
-# 初始化数据持久化 - 使用Northflank Volumes路径
+# 创建数据库表
 create_tables()
-file_manager = FileManager(DATA_PATH)
+
+# 初始化文件管理器
+file_manager = FileManager()
 
 # 日志设置
 def setup_logger():
+    """设置日志记录器"""
+    if not os.path.exists(file_manager.logs_path):
+        os.makedirs(file_manager.logs_path)
+    
     current_date = datetime.now().strftime('%Y-%m-%d')
-    log_filename = os.path.join(LOGS_PATH, f'tg_bot_{current_date}.log')
+    log_filename = file_manager.get_log_file_path(current_date)
+    
     logger = logging.getLogger('tg_bot')
     logger.setLevel(logging.DEBUG)
-    file_handler = logging.FileHandler(log_filename)
+    
+    # 清除现有的处理器
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # 文件处理器
+    file_handler = logging.FileHandler(log_filename, encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
+    
+    # 控制台处理器
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
+    
+    # 格式化器
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
+    
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+    
     return logger
 
 logger = setup_logger()
@@ -76,10 +84,12 @@ try:
 except Exception:
     logger.error("[FATAL] TG_API_ID 必须为整数")
     sys.exit(1)
+
 TG_API_HASH = get_env('TG_API_HASH')
 if TG_API_HASH is None or TG_API_HASH == '':
     logger.error("[FATAL] TG_API_HASH 必须设置")
     sys.exit(1)
+
 TG_PHONE_NUMBER = get_env('TG_PHONE_NUMBER')
 TG_LOG_GROUP_ID = get_env('TG_LOG_GROUP_ID', required=False)
 if TG_LOG_GROUP_ID is not None and TG_LOG_GROUP_ID != '':
@@ -90,6 +100,7 @@ if TG_LOG_GROUP_ID is not None and TG_LOG_GROUP_ID != '':
         sys.exit(1)
 else:
     TG_LOG_GROUP_ID = None
+
 BARK_API_KEY = get_env('BARK_API_KEY', required=False)
 TG_GROUP_IDS_ENV = get_env('TG_GROUP_IDS') or ''
 try:
@@ -97,13 +108,12 @@ try:
 except Exception:
     logger.error("[FATAL] TG_GROUP_IDS 格式错误，必须为英文逗号分隔的群组ID列表")
     sys.exit(1)
+
 if not TG_GROUP_IDS:
     logger.error("[FATAL] TG_GROUP_IDS 未配置监听群组ID，或内容为空")
     sys.exit(1)
 
-# Session文件路径 - 使用Northflank Volumes
 SESSION_NAME = f'session_{TG_PHONE_NUMBER}'
-SESSION_FILE = os.path.join(SESSION_PATH, f'{SESSION_NAME}.session')
 
 # OKX多账号配置
 OKX_ACCOUNTS = []
@@ -117,6 +127,7 @@ for idx in range(1, 6):
     fixed_qty_btc = get_env(prefix + 'FIXED_QTY_BTC', required=False)
     account_name = get_env(prefix + 'ACCOUNT_NAME', required=False) or f'OKX{idx}'
     flag = get_env(prefix + 'FLAG', required=False) or '1'
+    
     if api_key and secret_key and passphrase and leverage and fixed_qty_eth and fixed_qty_btc:
         OKX_ACCOUNTS.append({
             'account_name': account_name,
@@ -131,45 +142,32 @@ for idx in range(1, 6):
 if not OKX_ACCOUNTS:
     logger.warning("未检测到任何OKX账号环境变量，自动下单功能将不可用。")
 
-# 订单日志记录 - 使用数据库和文件双重记录
-def log_order_to_database(order_info):
+# 数据持久化函数
+def log_order_to_database(order_info: Dict):
     """将订单信息记录到数据库"""
     try:
         with DatabaseManager() as db:
             db.add_trading_order(order_info)
-        logger.info("订单信息已记录到数据库")
+            logger.info(f"订单信息已记录到数据库: {order_info.get('order_id', 'N/A')}")
     except Exception as e:
         logger.error(f"记录订单信息到数据库失败: {e}")
         logger.error(traceback.format_exc())
 
-def log_order_to_file(order_info):
-    """将订单信息记录到文件"""
-    try:
-        file_manager.write_order_log(order_info)
-        logger.info("订单信息已记录到文件")
-    except Exception as e:
-        logger.error(f"记录订单信息到文件失败: {e}")
-
-def log_order(order_info):
-    """记录订单信息到数据库和文件"""
-    log_order_to_database(order_info)
-    log_order_to_file(order_info)
-
-def log_telegram_message(message_data):
-    """记录Telegram消息到数据库"""
+def log_message_to_database(message_data: Dict):
+    """将Telegram消息记录到数据库"""
     try:
         with DatabaseManager() as db:
             db.add_telegram_message(message_data)
     except Exception as e:
-        logger.error(f"记录Telegram消息失败: {e}")
+        logger.error(f"记录消息到数据库失败: {e}")
 
-def log_system_message(level, module, message):
-    """记录系统消息到数据库"""
+def log_system_message(level: str, module: str, message: str):
+    """记录系统日志到数据库"""
     try:
         with DatabaseManager() as db:
             db.add_system_log(level, module, message)
     except Exception as e:
-        logger.error(f"记录系统消息失败: {e}")
+        logger.error(f"记录系统日志到数据库失败: {e}")
 
 # Bark 推送
 def send_bark_notification(bark_api_key, title, message):
@@ -205,8 +203,8 @@ def extract_trade_info(message):
         r'([A-Z]+)\s*做多',
         r'买入\s*([A-Z]+)',
         r'([A-Z]+)\s*买入',
-        r'LONG\s*([A-Z]+)',
-        r'([A-Z]+)\s*LONG'
+        r'开多\s*([A-Z]+)',
+        r'([A-Z]+)\s*开多'
     ]
     
     # 做空信号
@@ -215,11 +213,10 @@ def extract_trade_info(message):
         r'([A-Z]+)\s*做空',
         r'卖出\s*([A-Z]+)',
         r'([A-Z]+)\s*卖出',
-        r'SHORT\s*([A-Z]+)',
-        r'([A-Z]+)\s*SHORT'
+        r'开空\s*([A-Z]+)',
+        r'([A-Z]+)\s*开空'
     ]
     
-    # 检查做多信号
     for pattern in long_patterns:
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
@@ -227,7 +224,6 @@ def extract_trade_info(message):
             logger.info(f"检测到做多信号: {symbol}")
             return '做多', symbol
     
-    # 检查做空信号
     for pattern in short_patterns:
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
@@ -249,16 +245,20 @@ def extract_close_signal(message):
         r'([A-Z]+)\s*平多',
         r'平空\s*([A-Z]+)',
         r'([A-Z]+)\s*平空',
-        r'CLOSE\s*([A-Z]+)',
-        r'([A-Z]+)\s*CLOSE'
+        r'全部平仓',
+        r'清仓'
     ]
     
     for pattern in close_patterns:
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
-            symbol = match.group(1)
-            logger.info(f"检测到平仓信号: {symbol}")
-            return 'both', symbol
+            if '全部平仓' in pattern or '清仓' in pattern:
+                logger.info("检测到全部平仓信号")
+                return '全部平仓', 'ALL'
+            else:
+                symbol = match.group(1)
+                logger.info(f"检测到平仓信号: {symbol}")
+                return '平仓', symbol
     
     logger.debug("未检测到平仓信号")
     return None, None
@@ -282,15 +282,15 @@ def set_leverage(account, symbols):
         
         for symbol in symbols:
             symbol_id = f"{symbol}-USDT-SWAP"
-            response = trade_api.set_leverage(
+            result = trade_api.set_leverage(
                 instId=symbol_id,
                 lever=str(account['LEVERAGE']),
                 mgnMode='cross'
             )
-            if response.get('code') == '0':
+            if result.get('code') == '0':
                 logger.info(f"账号 {account['account_name']} 设置 {symbol} 杠杆成功: {account['LEVERAGE']}x")
             else:
-                logger.error(f"账号 {account['account_name']} 设置 {symbol} 杠杆失败: {response}")
+                logger.warning(f"账号 {account['account_name']} 设置 {symbol} 杠杆失败: {result}")
     except Exception as e:
         logger.error(f"设置杠杆时出错: {e}")
         logger.error(traceback.format_exc())
@@ -299,11 +299,11 @@ def get_latest_market_price(symbol):
     try:
         market_api = MarketData.MarketAPI(debug=False)
         symbol_id = f"{symbol}-USDT-SWAP"
-        response = market_api.get_ticker(instId=symbol_id)
-        if response.get('code') == '0':
-            return float(response['data'][0]['last'])
+        result = market_api.get_ticker(instId=symbol_id)
+        if result.get('code') == '0':
+            return float(result['data'][0]['last'])
         else:
-            logger.error(f"获取 {symbol} 市场价格失败: {response}")
+            logger.error(f"获取 {symbol} 市场价格失败: {result}")
             return None
     except Exception as e:
         logger.error(f"获取市场价格时出错: {e}")
@@ -321,91 +321,68 @@ def place_order(account, action, symbol):
         
         symbol_id = f"{symbol}-USDT-SWAP"
         side = 'buy' if action == '做多' else 'sell'
-        qty = account['FIXED_QTY'].get(symbol, '0.01')
-        clord_id = generate_clord_id()
+        pos_side = 'long' if action == '做多' else 'short'
         
-        response = trade_api.place_order(
+        # 获取固定数量
+        fixed_qty = account['FIXED_QTY'].get(symbol, '0.01')
+        
+        # 生成订单ID
+        cl_ord_id = generate_clord_id()
+        
+        result = trade_api.place_order(
             instId=symbol_id,
             tdMode='cross',
             side=side,
+            posSide=pos_side,
             ordType='market',
-            sz=qty,
-            clOrdId=clord_id
+            sz=fixed_qty,
+            clOrdId=cl_ord_id
         )
         
-        if response.get('code') == '0':
-            order_id = response['data'][0]['ordId']
+        if result.get('code') == '0':
+            order_data = result['data'][0]
             market_price = get_latest_market_price(symbol)
             
-            # 记录订单信息
+            # 记录订单到数据库
             order_info = {
-                'timestamp': datetime.utcnow(),
                 'account_name': account['account_name'],
                 'action': action,
                 'symbol': symbol,
-                'quantity': float(qty),
+                'quantity': float(fixed_qty),
                 'price': market_price or 0.0,
                 'market_price': market_price or 0.0,
-                'order_id': order_id,
+                'order_id': order_data.get('ordId', cl_ord_id),
                 'status': '成功',
-                'error_message': None,
-                'profit_loss': None,
-                'close_time': None
+                'error_message': None
             }
             
-            log_order(order_info)
-            log_system_message('INFO', 'trading', f"下单成功: {account['account_name']} {action} {symbol} {qty}")
+            log_order_to_database(order_info)
+            file_manager.write_order_log(order_info)
             
-            logger.info(f"账号 {account['account_name']} {action} {symbol} 下单成功: {order_id}")
+            logger.info(f"账号 {account['account_name']} {action} {symbol} 下单成功")
             return True
         else:
-            error_msg = f"下单失败: {response}"
-            logger.error(f"账号 {account['account_name']} {action} {symbol} {error_msg}")
-            
             # 记录失败订单
             order_info = {
-                'timestamp': datetime.utcnow(),
                 'account_name': account['account_name'],
                 'action': action,
                 'symbol': symbol,
-                'quantity': float(qty),
+                'quantity': float(fixed_qty),
                 'price': 0.0,
                 'market_price': get_latest_market_price(symbol) or 0.0,
-                'order_id': clord_id,
+                'order_id': cl_ord_id,
                 'status': '失败',
-                'error_message': error_msg,
-                'profit_loss': None,
-                'close_time': None
+                'error_message': result.get('msg', '未知错误')
             }
             
-            log_order(order_info)
-            log_system_message('ERROR', 'trading', f"下单失败: {account['account_name']} {action} {symbol} - {error_msg}")
+            log_order_to_database(order_info)
+            file_manager.write_order_log(order_info)
             
+            logger.error(f"账号 {account['account_name']} {action} {symbol} 下单失败: {result}")
             return False
     except Exception as e:
-        error_msg = f"下单异常: {str(e)}"
-        logger.error(f"账号 {account['account_name']} {action} {symbol} {error_msg}")
+        logger.error(f"下单时出错: {e}")
         logger.error(traceback.format_exc())
-        
-        # 记录异常订单
-        order_info = {
-            'timestamp': datetime.utcnow(),
-            'account_name': account['account_name'],
-            'action': action,
-            'symbol': symbol,
-            'quantity': 0.0,
-            'price': 0.0,
-            'market_price': 0.0,
-            'order_id': generate_clord_id(),
-            'status': '失败',
-            'error_message': error_msg,
-            'profit_loss': None,
-            'close_time': None
-        }
-        
-        log_order(order_info)
-        log_system_message('ERROR', 'trading', f"下单异常: {account['account_name']} {action} {symbol} - {error_msg}")
-        
         return False
 
 def close_position(account, symbol, close_type='both'):
@@ -429,57 +406,59 @@ def close_position(account, symbol, close_type='both'):
         symbol_id = f"{symbol}-USDT-SWAP"
         
         # 获取持仓信息
-        positions_response = account_api.get_positions(instId=symbol_id)
-        if positions_response.get('code') != '0':
-            logger.error(f"获取持仓信息失败: {positions_response}")
+        positions_result = account_api.get_positions(instId=symbol_id)
+        if positions_result.get('code') != '0':
+            logger.warning(f"获取持仓信息失败: {positions_result}")
             return False
         
-        positions = positions_response['data']
+        positions = positions_result.get('data', [])
         close_results = []
         
         for position in positions:
-            pos_side = position['posSide']
-            pos_size = float(position['pos'])
+            pos_side = position.get('posSide')
+            pos_size = float(position.get('pos', '0'))
             
-            if pos_size == 0:
+            if pos_size <= 0:
                 continue
             
             # 根据平仓类型决定是否平仓
-            if close_type == 'both' or (close_type == 'long' and pos_side == 'long') or (close_type == 'short' and pos_side == 'short'):
+            if close_type == '全部平仓':
+                should_close = True
+            elif close_type == '平仓' and pos_side == 'long':
+                should_close = True
+            elif close_type == '平仓' and pos_side == 'short':
+                should_close = True
+            else:
+                should_close = False
+            
+            if should_close:
                 side = 'sell' if pos_side == 'long' else 'buy'
-                clord_id = generate_clord_id()
+                cl_ord_id = generate_clord_id()
                 
-                response = trade_api.place_order(
+                result = trade_api.place_order(
                     instId=symbol_id,
                     tdMode='cross',
                     side=side,
+                    posSide=pos_side,
                     ordType='market',
                     sz=str(pos_size),
-                    clOrdId=clord_id
+                    clOrdId=cl_ord_id
                 )
                 
-                if response.get('code') == '0':
-                    order_id = response['data'][0]['ordId']
+                if result.get('code') == '0':
                     close_results.append({
                         'pos_side': pos_side,
                         'size': pos_size,
-                        'order_id': order_id
+                        'order_id': result['data'][0].get('ordId', cl_ord_id)
                     })
-                    logger.info(f"账号 {account['account_name']} 平仓 {pos_side} {symbol} 成功: {order_id}")
+                    logger.info(f"平仓成功: {pos_side} {pos_size} {symbol}")
                 else:
-                    logger.error(f"账号 {account['account_name']} 平仓 {pos_side} {symbol} 失败: {response}")
+                    logger.error(f"平仓失败: {result}")
         
-        if close_results:
-            log_system_message('INFO', 'trading', f"平仓完成: {account['account_name']} {symbol} {len(close_results)}个持仓")
-            return True
-        else:
-            logger.info(f"账号 {account['account_name']} 在 {symbol} 上没有需要平仓的持仓")
-            return False
-            
+        return close_results if close_results else False
     except Exception as e:
         logger.error(f"平仓时出错: {e}")
         logger.error(traceback.format_exc())
-        log_system_message('ERROR', 'trading', f"平仓异常: {account['account_name']} {symbol} - {str(e)}")
         return False
 
 class BotManager:
@@ -489,23 +468,44 @@ class BotManager:
         self.bot_thread = None
         self.last_start = None
         self.client = None
-        # 使用Northflank Volumes路径
-        self.pid_file = os.path.join(DATA_PATH, 'tg_bot.pid')
-        self.log_file = os.path.join(LOGS_PATH, 'tg_bot_daemon.log')
+        self.pid_file = os.path.join(file_manager.base_path, 'tg_bot.pid')
+        self.log_file = os.path.join(file_manager.logs_path, 'tg_bot_daemon.log')
+        
+        # 初始化数据库会话管理
+        self.db_manager = DatabaseManager()
+        
+        # 更新会话状态
+        self.update_session_status()
+
+    def update_session_status(self):
+        """更新会话状态"""
+        try:
+            session = self.db_manager.get_or_create_bot_session(SESSION_NAME, TG_PHONE_NUMBER)
+            session_path = file_manager.get_session_file_path(SESSION_NAME)
+            is_authorized = os.path.exists(session_path)
+            self.db_manager.update_session_authorization(SESSION_NAME, is_authorized)
+            logger.info(f"会话状态已更新: {SESSION_NAME}, 已授权: {is_authorized}")
+        except Exception as e:
+            logger.error(f"更新会话状态失败: {e}")
 
     def start_bot(self):
         while not self.stop_event.is_set():
             try:
                 self.last_start = datetime.now()
                 logger.info(f"开始新的机器人会话，计划运行到: {self.last_start + self.restart_interval}")
+                log_system_message('INFO', 'BotManager', f"机器人启动，计划运行到: {self.last_start + self.restart_interval}")
+                
                 asyncio.run(self.bot_main_loop())
+                
                 if self.stop_event.is_set():
                     break
+                
                 logger.info(f"等待2秒后重启...")
                 time.sleep(2)
             except Exception as e:
                 logger.error(f"机器人会话出错: {e}")
                 logger.error(traceback.format_exc())
+                log_system_message('ERROR', 'BotManager', f"机器人会话出错: {e}")
                 time.sleep(10)
 
     async def send_restart_notification(self):
@@ -523,9 +523,8 @@ class BotManager:
             logger.info("=" * 50)
             logger.info("Telegram 交易机器人启动")
             logger.info(f"启动时间: {get_shanghai_time().strftime('%Y-%m-%d %H:%M:%S')}")
-            logger.info(f"数据存储路径: {DATA_PATH}")
-            logger.info(f"Session文件路径: {SESSION_FILE}")
             logger.info("=" * 50)
+            log_system_message('INFO', 'BotManager', "Telegram 交易机器人启动")
 
             for account in OKX_ACCOUNTS:
                 logger.info(f"账号: {account['account_name']}, 杠杆倍数: {account['LEVERAGE']}")
@@ -534,9 +533,10 @@ class BotManager:
 
             logger.info(f"监听群组 IDs: {TG_GROUP_IDS}")
 
-            # 使用Northflank Volumes中的Session文件
+            # 使用文件管理器中的session路径
+            session_path = file_manager.get_session_file_path(SESSION_NAME)
             self.client = TelegramClient(
-                SESSION_FILE,
+                session_path,
                 int(TG_API_ID),
                 str(TG_API_HASH),
                 connection_retries=5,
@@ -550,42 +550,28 @@ class BotManager:
                 group_title = f"群组ID:{event.chat_id}"
                 logger.info(f"收到来自[{group_title}]的新消息")
                 logger.debug(f"完整消息内容: {message_text}")
+                
                 sender = await event.get_sender()
                 sender_name = sender.username if sender.username else (sender.first_name or "") + (sender.last_name or "")
                 base_log = f"时间: {shanghai_time}\n来源: {group_title} (@{sender_name})\n消息: {message_text[:300]}{'...' if len(message_text) > 300 else ''}"
-
-                # 记录Telegram消息到数据库
-                message_data = {
-                    'timestamp': datetime.utcnow(),
-                    'group_id': str(event.chat_id),
-                    'group_title': group_title,
-                    'sender_name': sender_name,
-                    'message_text': message_text,
-                    'has_signal': False,
-                    'signal_type': None,
-                    'signal_action': None,
-                    'signal_symbol': None
-                }
 
                 # 提取交易信息
                 action, symbol = extract_trade_info(message_text)
                 # 提取平仓信号
                 close_type, close_symbol = extract_close_signal(message_text)
                 
-                # 更新消息数据
-                if action and symbol:
-                    message_data['has_signal'] = True
-                    message_data['signal_type'] = '交易信号'
-                    message_data['signal_action'] = action
-                    message_data['signal_symbol'] = symbol
-                elif close_type and close_symbol:
-                    message_data['has_signal'] = True
-                    message_data['signal_type'] = '平仓信号'
-                    message_data['signal_action'] = close_type
-                    message_data['signal_symbol'] = close_symbol
-                
                 # 记录消息到数据库
-                log_telegram_message(message_data)
+                message_data = {
+                    'group_id': str(event.chat_id),
+                    'group_title': group_title,
+                    'sender_name': sender_name,
+                    'message_text': message_text,
+                    'has_signal': bool(action and symbol) or bool(close_type and close_symbol),
+                    'signal_type': '交易信号' if action and symbol else ('平仓信号' if close_type and close_symbol else None),
+                    'signal_action': action,
+                    'signal_symbol': symbol or close_symbol
+                }
+                log_message_to_database(message_data)
                 
                 # 合并消息发送到日志群组
                 combined_message = f"📥 收到消息:\n{base_log}"
@@ -654,6 +640,7 @@ class BotManager:
                             await self.client.send_message(TG_LOG_GROUP_ID, error_msg)
                         logger.error(f"处理交易信号时出错: {e}")
                         logger.error(traceback.format_exc())
+                        log_system_message('ERROR', 'SignalHandler', f"处理交易信号时出错: {e}")
                 
                 # 处理平仓信号
                 elif close_type and close_symbol:
@@ -690,38 +677,47 @@ class BotManager:
                             await self.client.send_message(TG_LOG_GROUP_ID, error_msg)
                         logger.error(f"处理平仓信号时出错: {e}")
                         logger.error(traceback.format_exc())
+                        log_system_message('ERROR', 'SignalHandler', f"处理平仓信号时出错: {e}")
 
             await self.client.start()
             logger.info(f"Telegram 客户端已连接，开始监听群组: {TG_GROUP_IDS}")
+            log_system_message('INFO', 'BotManager', f"Telegram 客户端已连接，开始监听群组: {TG_GROUP_IDS}")
+            
             start_time = datetime.now()
             while not self.stop_event.is_set():
                 if datetime.now() - start_time >= self.restart_interval:
                     logger.info("达到重启时间，准备重启...")
+                    log_system_message('INFO', 'BotManager', "达到重启时间，准备重启")
                     await self.send_restart_notification()
                     break
                 await asyncio.sleep(30)
                 current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 logger.debug(f"机器人仍在运行，当前时间: {current_time}")
+            
             logger.info("正在断开Telegram连接...")
             if self.client and self.client.is_connected():
                 await self.client.disconnect()
         except Exception as e:
             logger.error(f"机器人主循环出错: {e}")
             logger.error(traceback.format_exc())
+            log_system_message('ERROR', 'BotManager', f"机器人主循环出错: {e}")
         finally:
             logger.info("=" * 50)
             logger.info("Telegram 交易机器人停止运行")
             logger.info(f"停止时间: {get_shanghai_time().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info("=" * 50)
+            log_system_message('INFO', 'BotManager', "Telegram 交易机器人停止运行")
 
     def start(self):
         self.stop_event.clear()
         self.bot_thread = threading.Thread(target=self.start_bot, daemon=True)
         self.bot_thread.start()
         logger.info("机器人管理器已启动")
+        log_system_message('INFO', 'BotManager', "机器人管理器已启动")
 
     def stop(self):
         logger.info("停止机器人管理器...")
+        log_system_message('INFO', 'BotManager', "停止机器人管理器")
         self.stop_event.set()
         if self.bot_thread and self.bot_thread.is_alive():
             self.bot_thread.join(timeout=30)
@@ -862,9 +858,9 @@ if __name__ == "__main__":
     
     if args.login:
         print(f"正在使用电话号码 {TG_PHONE_NUMBER} 登录Telegram...")
-        print(f"Session文件将保存到: {SESSION_FILE}")
+        session_path = file_manager.get_session_file_path(SESSION_NAME)
         client = TelegramClient(
-            SESSION_FILE,
+            session_path,
             int(TG_API_ID),
             str(TG_API_HASH),
             connection_retries=5,
@@ -874,7 +870,6 @@ if __name__ == "__main__":
         try:
             client.start()
             print("登录成功！")
-            print(f"Session文件已保存到: {SESSION_FILE}")
             client.disconnect()
         except Exception as e:
             print(f"登录失败: {e}")
@@ -892,8 +887,6 @@ if __name__ == "__main__":
     else:
         print("正在启动Telegram机器人...")
         print(f"使用电话号码: {TG_PHONE_NUMBER}")
-        print(f"数据存储路径: {DATA_PATH}")
-        print(f"Session文件路径: {SESSION_FILE}")
         print("如果是第一次运行，请按照提示输入验证码")
         
         try:
