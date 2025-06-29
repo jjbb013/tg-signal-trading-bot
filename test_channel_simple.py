@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-简化的频道监听测试脚本
-专门用于测试特定频道的消息监听
+简单的频道监听测试脚本
+避免复杂的异步问题，专注于核心功能
 """
 
 import asyncio
@@ -21,9 +21,9 @@ def setup_logger():
         os.makedirs('logs')
     
     current_date = datetime.now().strftime('%Y-%m-%d')
-    log_filename = f'logs/simple_channel_test_{current_date}.log'
+    log_filename = f'logs/test_channel_simple_{current_date}.log'
     
-    logger = logging.getLogger('channel_test')
+    logger = logging.getLogger('channel_test_simple')
     logger.setLevel(logging.DEBUG)
     
     # 文件处理器
@@ -69,7 +69,7 @@ class SimpleChannelTester:
         self.message_count = 0
         self.all_messages = []
         
-    async def setup_client(self):
+    def setup_client(self):
         """设置Telegram客户端"""
         try:
             # 创建客户端
@@ -81,25 +81,25 @@ class SimpleChannelTester:
                 timeout=30
             )
             
-            await self.client.start()
+            self.client.start()
             self.logger.info("Telegram客户端连接成功")
             
         except Exception as e:
             self.logger.error(f"设置客户端失败: {e}")
             raise
     
-    async def test_channel_access(self):
+    def test_channel_access(self):
         """测试频道访问"""
         try:
             self.logger.info(f"测试频道访问: {self.target_channel_id}")
             
             # 获取频道信息
-            channel = await self.client.get_entity(self.target_channel_id)
+            channel = self.client.get_entity(self.target_channel_id)
             self.logger.info(f"频道信息: {channel}")
             
             # 获取最近消息
             messages = []
-            async for message in self.client.iter_messages(channel, limit=5):
+            for message in self.client.iter_messages(channel, limit=5):
                 if message and message.text:
                     messages.append({
                         'id': message.id,
@@ -113,7 +113,7 @@ class SimpleChannelTester:
         except Exception as e:
             self.logger.error(f"测试频道访问失败: {e}")
     
-    async def setup_listeners(self):
+    def setup_listeners(self):
         """设置监听器"""
         
         # 监听所有消息
@@ -168,43 +168,40 @@ class SimpleChannelTester:
             except Exception as e:
                 self.logger.error(f"目标频道监听器失败: {e}")
     
-    async def periodic_history_check(self):
+    def periodic_history_check(self):
         """定期检查历史消息"""
-        while True:
-            try:
-                await asyncio.sleep(60)  # 每分钟检查一次
+        try:
+            shanghai_time = get_shanghai_time().strftime('%Y-%m-%d %H:%M:%S')
+            self.logger.info(f"🕐 定期检查历史消息: {shanghai_time}")
+            
+            # 获取最近的消息
+            channel = self.client.get_entity(self.target_channel_id)
+            recent_messages = []
+            
+            for message in self.client.iter_messages(channel, limit=10):
+                if message and message.text:
+                    recent_messages.append({
+                        'id': message.id,
+                        'date': str(message.date) if message.date else None,
+                        'text': message.text[:100]
+                    })
+            
+            self.logger.info(f"历史消息检查结果: {len(recent_messages)} 条消息")
+            for msg in recent_messages:
+                self.logger.info(f"历史消息: {json.dumps(msg, ensure_ascii=False)}")
+            
+            # 检查是否有遗漏的消息
+            if self.all_messages:
+                latest_realtime_id = max(msg['message_id'] for msg in self.all_messages)
+                latest_history_id = max(msg['id'] for msg in recent_messages)
                 
-                shanghai_time = get_shanghai_time().strftime('%Y-%m-%d %H:%M:%S')
-                self.logger.info(f"🕐 定期检查历史消息: {shanghai_time}")
-                
-                # 获取最近的消息
-                channel = await self.client.get_entity(self.target_channel_id)
-                recent_messages = []
-                
-                async for message in self.client.iter_messages(channel, limit=10):
-                    if message and message.text:
-                        recent_messages.append({
-                            'id': message.id,
-                            'date': str(message.date) if message.date else None,
-                            'text': message.text[:100]
-                        })
-                
-                self.logger.info(f"历史消息检查结果: {len(recent_messages)} 条消息")
-                for msg in recent_messages:
-                    self.logger.info(f"历史消息: {json.dumps(msg, ensure_ascii=False)}")
-                
-                # 检查是否有遗漏的消息
-                if self.all_messages:
-                    latest_realtime_id = max(msg['message_id'] for msg in self.all_messages)
-                    latest_history_id = max(msg['id'] for msg in recent_messages)
-                    
-                    if latest_history_id > latest_realtime_id:
-                        self.logger.warning(f"发现遗漏消息! 历史最新ID: {latest_history_id}, 实时最新ID: {latest_realtime_id}")
-                
-            except Exception as e:
-                self.logger.error(f"定期检查失败: {e}")
+                if latest_history_id > latest_realtime_id:
+                    self.logger.warning(f"发现遗漏消息! 历史最新ID: {latest_history_id}, 实时最新ID: {latest_realtime_id}")
+            
+        except Exception as e:
+            self.logger.error(f"定期检查失败: {e}")
     
-    async def run_test(self):
+    def run_test(self):
         """运行测试"""
         try:
             self.logger.info("=" * 60)
@@ -214,23 +211,28 @@ class SimpleChannelTester:
             self.logger.info("=" * 60)
             
             # 设置客户端
-            await self.setup_client()
+            self.setup_client()
             
             # 测试频道访问
-            await self.test_channel_access()
+            self.test_channel_access()
             
             # 设置监听器
-            await self.setup_listeners()
-            
-            # 启动定期检查
-            asyncio.create_task(self.periodic_history_check())
+            self.setup_listeners()
             
             self.logger.info("所有监听器已设置，开始监听...")
             self.logger.info("按 Ctrl+C 停止测试")
             
-            # 保持运行
+            # 保持运行，每分钟检查一次历史消息
+            import time
+            start_time = time.time()
+            
             while True:
-                await asyncio.sleep(1)
+                time.sleep(1)
+                
+                # 每分钟检查一次历史消息
+                if time.time() - start_time >= 60:
+                    self.periodic_history_check()
+                    start_time = time.time()
                 
         except KeyboardInterrupt:
             self.logger.info("收到中断信号，正在停止...")
@@ -239,10 +241,10 @@ class SimpleChannelTester:
             self.logger.error(f"测试过程中出错: {e}")
         finally:
             if self.client:
-                await self.client.disconnect()
+                self.client.disconnect()
             self.logger.info("测试结束")
 
-async def main():
+def main():
     """主函数"""
     # 加载配置
     config = load_config()
@@ -251,7 +253,7 @@ async def main():
     tester = SimpleChannelTester(config)
     
     # 运行测试
-    await tester.run_test()
+    tester.run_test()
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 

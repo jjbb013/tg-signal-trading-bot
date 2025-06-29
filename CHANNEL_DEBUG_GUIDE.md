@@ -5,9 +5,9 @@
 
 ## 调试工具
 
-### 1. 简化的频道测试脚本
+### 1. 简化的频道测试脚本（推荐）
 ```bash
-python simple_channel_test.py
+python test_channel_simple.py
 ```
 
 **功能：**
@@ -15,10 +15,17 @@ python simple_channel_test.py
 - 专门监听目标频道消息
 - 定期检查历史消息，对比实时监听
 - 记录消息ID、时间、内容等详细信息
+- 避免复杂的异步问题
 
-**日志文件：** `logs/simple_channel_test_YYYY-MM-DD.log`
+**日志文件：** `logs/test_channel_simple_YYYY-MM-DD.log`
 
-### 2. 增强的auto30m.py
+### 2. 原始测试脚本（有异步问题）
+```bash
+python simple_channel_test.py
+```
+⚠️ 注意：此脚本存在异步/同步混用问题，建议使用上面的简化版本。
+
+### 3. 增强的auto30m.py
 已添加以下调试功能：
 - 原始事件监听（Raw events）
 - 详细消息记录
@@ -27,9 +34,9 @@ python simple_channel_test.py
 
 ## 调试步骤
 
-### 第一步：运行简化测试
+### 第一步：运行简化测试（推荐）
 ```bash
-python simple_channel_test.py
+python test_channel_simple.py
 ```
 
 观察输出：
@@ -39,7 +46,7 @@ python simple_channel_test.py
 4. 是否有遗漏消息
 
 ### 第二步：分析日志
-查看 `logs/simple_channel_test_YYYY-MM-DD.log` 文件：
+查看 `logs/test_channel_simple_YYYY-MM-DD.log` 文件：
 
 1. **连接测试结果**
    - 频道信息获取是否成功
@@ -122,6 +129,22 @@ python auto30m.py
 2. **不同监听器**：比较不同监听方式的效果
 3. **时间分布**：分析遗漏消息的时间规律
 
+## 快速测试命令
+
+```bash
+# 1. 运行简化测试（推荐）
+python test_channel_simple.py
+
+# 2. 查看实时日志
+tail -f logs/test_channel_simple_$(date +%Y-%m-%d).log
+
+# 3. 查看特定频道的消息
+grep "目标频道消息" logs/test_channel_simple_$(date +%Y-%m-%d).log
+
+# 4. 查看遗漏消息警告
+grep "发现遗漏消息" logs/test_channel_simple_$(date +%Y-%m-%d).log
+```
+
 ## 后续优化
 
 根据调试结果，可以考虑：
@@ -135,4 +158,5 @@ python auto30m.py
 1. 调试过程中会产生大量日志，注意磁盘空间
 2. 测试时间建议持续1-2小时，确保有足够样本
 3. 对比手机/电脑客户端，确认消息确实存在
-4. 记录测试时间段，便于后续分析 
+4. 记录测试时间段，便于后续分析
+5. 如果遇到异步错误，使用 `test_channel_simple.py` 而不是 `simple_channel_test.py` 
