@@ -639,7 +639,7 @@ class BotManager:
                         logger.error(f"处理平仓信号时出错: {e}")
                         logger.error(traceback.format_exc())
 
-            self.client.start()
+            await self.client.start()
             logger.info(f"Telegram 客户端已连接，开始监听群组: {TG_GROUP_IDS}")
             start_time = datetime.now()
             while not self.stop_event.is_set():
@@ -652,7 +652,7 @@ class BotManager:
                 logger.debug(f"机器人仍在运行，当前时间: {current_time}")
             logger.info("正在断开Telegram连接...")
             if self.client and self.client.is_connected():
-                self.client.disconnect()
+                await self.client.disconnect()
         except Exception as e:
             logger.error(f"机器人主循环出错: {e}")
             logger.error(traceback.format_exc())
