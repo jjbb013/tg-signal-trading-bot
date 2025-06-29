@@ -194,6 +194,15 @@ def send_bark_notification(bark_api_key, title, message):
 # 提取交易信息
 def extract_trade_info(message):
     logger.debug(f"正在从消息中提取交易信息: {message[:100]}...")
+    
+    # 首先检查是否包含平仓关键词，如果是平仓信号则不提取开仓信息
+    close_keywords = ['空止盈', '空止损', '多止盈', '多止损']
+    has_close_signal = any(keyword in message for keyword in close_keywords)
+    
+    if has_close_signal:
+        logger.debug("检测到平仓信号，跳过开仓信号提取")
+        return None, None
+    
     action_pattern = r"执行交易:(.+?)(?= \d+\.\d+\w+)"
     action_match = re.search(action_pattern, message)
     symbol_pattern = r"策略当前交易对:(\w+USDT\.P)"
@@ -630,7 +639,7 @@ class BotManager:
                         logger.error(f"处理平仓信号时出错: {e}")
                         logger.error(traceback.format_exc())
 
-            await self.client.start()
+            self.client.start()
             logger.info(f"Telegram 客户端已连接，开始监听群组: {TG_GROUP_IDS}")
             start_time = datetime.now()
             while not self.stop_event.is_set():
@@ -642,7 +651,8 @@ class BotManager:
                 current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 logger.debug(f"机器人仍在运行，当前时间: {current_time}")
             logger.info("正在断开Telegram连接...")
-            await self.client.disconnect()
+            if self.client and self.client.is_connected():
+                self.client.disconnect()
         except Exception as e:
             logger.error(f"机器人主循环出错: {e}")
             logger.error(traceback.format_exc())
