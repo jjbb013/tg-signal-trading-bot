@@ -15,7 +15,12 @@ import logging
 import traceback
 import time
 import threading
+import threading
+import queue
 
+# 添加消息队列用于历史消息对比
+message_queue = queue.Queue(maxsize=1000)
+last_messages = {}  # 存储每个群组的最后消息ID
 
 # 设置日志记录
 def setup_logger():
@@ -27,14 +32,23 @@ def setup_logger():
     # 生成日志文件名（按日期）
     current_date = datetime.now().strftime('%Y-%m-%d')
     log_filename = f'logs/tg_bot_{current_date}.log'
+    debug_log_filename = f'logs/debug_{current_date}.log'
 
-    # 创建日志记录器
+    # 创建主日志记录器
     logger = logging.getLogger('tg_bot')
     logger.setLevel(logging.DEBUG)
+
+    # 创建调试日志记录器
+    debug_logger = logging.getLogger('debug')
+    debug_logger.setLevel(logging.DEBUG)
 
     # 创建文件处理器
     file_handler = logging.FileHandler(log_filename)
     file_handler.setLevel(logging.DEBUG)
+
+    # 创建调试文件处理器
+    debug_file_handler = logging.FileHandler(debug_log_filename)
+    debug_file_handler.setLevel(logging.DEBUG)
 
     # 创建控制台处理器
     console_handler = logging.StreamHandler()
@@ -43,18 +57,211 @@ def setup_logger():
     # 创建日志格式
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
+    debug_file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
 
     # 添加处理器到记录器
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+    debug_logger.addHandler(debug_file_handler)
 
-    return logger
-
+    return logger, debug_logger
 
 # 创建日志记录器实例
-logger = setup_logger()
+logger, debug_logger = setup_logger()
 
+# 调试工具函数
+def log_raw_event(event):
+    """记录原始事件详细信息"""
+    try:
+        debug_info = {
+            'timestamp': datetime.now().isoformat(),
+            'event_type': type(event).__name__,
+            'event_id': getattr(event, 'id', 'N/A'),
+            'chat_id': getattr(event, 'chat_id', 'N/A'),
+            'sender_id': getattr(event, 'sender_id', 'N/A'),
+            'message': getattr(event, 'message', 'N/A'),
+            'raw_text': getattr(event, 'raw_text', 'N/A'),
+            'date': getattr(event, 'date', 'N/A'),
+            'edit_date': getattr(event, 'edit_date', 'N/A'),
+            'post_author': getattr(event, 'post_author', 'N/A'),
+            'grouped_id': getattr(event, 'grouped_id', 'N/A'),
+            'reply_to_msg_id': getattr(event, 'reply_to_msg_id', 'N/A'),
+            'forward': getattr(event, 'forward', 'N/A'),
+            'fwd_from': getattr(event, 'fwd_from', 'N/A'),
+            'via_bot_id': getattr(event, 'via_bot_id', 'N/A'),
+            'media_unread': getattr(event, 'media_unread', 'N/A'),
+            'silent': getattr(event, 'silent', 'N/A'),
+            'post': getattr(event, 'post', 'N/A'),
+            'from_scheduled': getattr(event, 'from_scheduled', 'N/A'),
+            'legacy': getattr(event, 'legacy', 'N/A'),
+            'edit_hide': getattr(event, 'edit_hide', 'N/A'),
+            'restriction_reason': getattr(event, 'restriction_reason', 'N/A'),
+            'ttl_period': getattr(event, 'ttl_period', 'N/A'),
+        }
+        
+        debug_logger.info(f"RAW_EVENT: {json.dumps(debug_info, ensure_ascii=False, default=str)}")
+        
+        # 记录原始事件对象的所有属性
+        event_attrs = {}
+        for attr in dir(event):
+            if not attr.startswith('_'):
+                try:
+                    value = getattr(event, attr)
+                    if not callable(value):
+                        event_attrs[attr] = str(value)
+                except:
+                    event_attrs[attr] = 'ERROR_GETTING_VALUE'
+        
+        debug_logger.info(f"EVENT_ATTRIBUTES: {json.dumps(event_attrs, ensure_ascii=False, default=str)}")
+        
+    except Exception as e:
+        debug_logger.error(f"记录原始事件失败: {e}")
+        debug_logger.error(traceback.format_exc())
+
+def log_message_details(event, message_type="NEW_MESSAGE"):
+    """记录消息详细信息"""
+    try:
+        shanghai_time = get_shanghai_time().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # 获取发送者信息
+        sender = None
+        sender_name = "Unknown"
+        try:
+            sender = event.get_sender()
+            if sender:
+                sender_name = sender.username if sender.username else (sender.first_name or "") + (sender.last_name or "")
+        except:
+            pass
+        
+        # 获取聊天信息
+        chat = None
+        chat_title = f"ChatID:{event.chat_id}"
+        try:
+            chat = event.get_chat()
+            if chat:
+                chat_title = getattr(chat, 'title', chat_title)
+        except:
+            pass
+        
+        message_details = {
+            'timestamp': shanghai_time,
+            'message_type': message_type,
+            'message_id': event.id,
+            'chat_id': event.chat_id,
+            'chat_title': chat_title,
+            'sender_id': event.sender_id,
+            'sender_name': sender_name,
+            'message_text': event.message.text if event.message else "No text",
+            'message_length': len(event.message.text) if event.message and event.message.text else 0,
+            'date': event.date.isoformat() if event.date else "N/A",
+            'edit_date': event.edit_date.isoformat() if event.edit_date else "N/A",
+            'reply_to_msg_id': event.reply_to_msg_id,
+            'forward': bool(event.forward),
+            'media': bool(event.media),
+            'silent': event.silent,
+            'post': event.post,
+            'from_scheduled': event.from_scheduled,
+        }
+        
+        debug_logger.info(f"MESSAGE_DETAILS: {json.dumps(message_details, ensure_ascii=False, default=str)}")
+        
+        # 将消息加入队列用于历史对比
+        try:
+            message_queue.put_nowait({
+                'chat_id': event.chat_id,
+                'message_id': event.id,
+                'timestamp': shanghai_time,
+                'text': event.message.text if event.message else "",
+                'details': message_details
+            })
+        except queue.Full:
+            # 队列满了，移除最旧的消息
+            try:
+                message_queue.get_nowait()
+                message_queue.put_nowait({
+                    'chat_id': event.chat_id,
+                    'message_id': event.id,
+                    'timestamp': shanghai_time,
+                    'text': event.message.text if event.message else "",
+                    'details': message_details
+                })
+            except:
+                pass
+                
+    except Exception as e:
+        debug_logger.error(f"记录消息详情失败: {e}")
+        debug_logger.error(traceback.format_exc())
+
+async def fetch_recent_messages(client, chat_id, limit=10):
+    """获取最近的消息用于对比"""
+    try:
+        debug_logger.info(f"开始获取聊天 {chat_id} 的最近 {limit} 条消息")
+        
+        messages = []
+        async for message in client.iter_messages(chat_id, limit=limit):
+            if message and message.text:
+                msg_info = {
+                    'id': message.id,
+                    'date': message.date.isoformat() if message.date else "N/A",
+                    'text': message.text[:200],  # 只取前200字符
+                    'sender_id': message.sender_id,
+                    'chat_id': message.chat_id
+                }
+                messages.append(msg_info)
+        
+        debug_logger.info(f"获取到 {len(messages)} 条历史消息")
+        for msg in messages:
+            debug_logger.info(f"HISTORY_MESSAGE: {json.dumps(msg, ensure_ascii=False, default=str)}")
+        
+        return messages
+        
+    except Exception as e:
+        debug_logger.error(f"获取历史消息失败: {e}")
+        debug_logger.error(traceback.format_exc())
+        return []
+
+def check_message_consistency(chat_id, realtime_messages, history_messages):
+    """检查实时消息和历史消息的一致性"""
+    try:
+        debug_logger.info(f"开始检查聊天 {chat_id} 的消息一致性")
+        
+        # 获取实时消息的ID列表
+        realtime_ids = set()
+        for msg in realtime_messages:
+            if msg.get('chat_id') == chat_id:
+                realtime_ids.add(msg.get('message_id'))
+        
+        # 获取历史消息的ID列表
+        history_ids = set()
+        for msg in history_messages:
+            if msg.get('chat_id') == chat_id:
+                history_ids.add(msg.get('id'))
+        
+        # 找出差异
+        missing_in_realtime = history_ids - realtime_ids
+        missing_in_history = realtime_ids - history_ids
+        
+        consistency_report = {
+            'chat_id': chat_id,
+            'realtime_count': len(realtime_ids),
+            'history_count': len(history_ids),
+            'missing_in_realtime': list(missing_in_realtime),
+            'missing_in_history': list(missing_in_history),
+            'consistency_rate': len(realtime_ids & history_ids) / len(realtime_ids | history_ids) if realtime_ids | history_ids else 0
+        }
+        
+        debug_logger.info(f"CONSISTENCY_REPORT: {json.dumps(consistency_report, ensure_ascii=False, default=str)}")
+        
+        if missing_in_realtime:
+            debug_logger.warning(f"聊天 {chat_id} 有 {len(missing_in_realtime)} 条消息在实时监听中丢失")
+        
+        return consistency_report
+        
+    except Exception as e:
+        debug_logger.error(f"检查消息一致性失败: {e}")
+        debug_logger.error(traceback.format_exc())
+        return None
 
 # 订单日志记录
 def log_order_to_file(order_info):
@@ -524,6 +731,8 @@ class BotManager:
         self.last_start = None
         self.client = None
         self.log_group_id = None
+        self.history_check_interval = 300  # 5分钟检查一次历史消息
+        self.last_history_check = {}
 
     def start_bot(self):
         """启动机器人线程"""
@@ -613,9 +822,21 @@ class BotManager:
                 timeout=30
             )
 
+            # 设置原始事件监听器（调试用）
+            @self.client.on(events.Raw)
+            async def raw_handler(event):
+                """监听所有原始事件"""
+                try:
+                    log_raw_event(event)
+                except Exception as e:
+                    debug_logger.error(f"处理原始事件失败: {e}")
+
             # 设置消息处理函数
             @self.client.on(events.NewMessage(chats=group_ids))
             async def handler(event):
+                # 记录消息详细信息
+                log_message_details(event, "NEW_MESSAGE")
+                
                 # 记录所有消息
                 message_text = event.message.text
                 shanghai_time = get_shanghai_time().strftime('%Y-%m-%d %H:%M:%S')
@@ -651,15 +872,16 @@ class BotManager:
                 # 发送合并消息到日志群组
                 try:
                     logger.info("发送消息到日志记录群组...")
-                    if len(combined_message) > 3000:
-                        # 如果消息过长，分成多个部分发送
-                        parts = [combined_message[i:i + 3000] for i in range(0, len(combined_message), 3000)]
-                        for i, part in enumerate(parts):
-                            prefix = f"📥 消息内容 (第 {i + 1}/{len(parts)} 部分):\n"
-                            await self.client.send_message(self.log_group_id, prefix + part)
-                    else:
-                        await self.client.send_message(self.log_group_id, combined_message)
-                    logger.info("消息已发送到日志记录群组")
+                    if self.log_group_id is not None:
+                        if len(combined_message) > 3000:
+                            # 如果消息过长，分成多个部分发送
+                            parts = [combined_message[i:i + 3000] for i in range(0, len(combined_message), 3000)]
+                            for i, part in enumerate(parts):
+                                prefix = f"📥 消息内容 (第 {i + 1}/{len(parts)} 部分):\n"
+                                await self.client.send_message(self.log_group_id, prefix + part)
+                        else:
+                            await self.client.send_message(self.log_group_id, combined_message)
+                        logger.info("消息已发送到日志记录群组")
                 except Exception as e:
                     logger.error(f"发送到日志群组失败: {e}")
                     logger.error(traceback.format_exc())
@@ -683,7 +905,8 @@ class BotManager:
                         # 判断交易动作是否支持
                         if action not in ['做多', '做空']:
                             no_order_log = f"ℹ️ 无需下单: 不支持的交易动作 '{action}'\n时间: {shanghai_time}\n详情: {action} {symbol}\n市场价格: {market_price}"
-                            await self.client.send_message(self.log_group_id, no_order_log)
+                            if self.log_group_id is not None:
+                                await self.client.send_message(self.log_group_id, no_order_log)
                             logger.info(f"无需下单: 不支持的交易动作 '{action}'")
                             return
 
@@ -695,7 +918,8 @@ class BotManager:
                                 # 下单成功后发送通知
                                 logger.info("发送下单结果到日志记录群组...")
                                 order_log = f"📊 下单成功!\n时间: {shanghai_time}\n账号: {account['account_name']}\n详情: {action} {symbol}\n市场价格: {market_price}"
-                                await self.client.send_message(self.log_group_id, order_log)
+                                if self.log_group_id is not None:
+                                    await self.client.send_message(self.log_group_id, order_log)
                                 logger.info("下单结果已发送到日志记录群组")
 
                                 bark_order_message = f"时间: {shanghai_time}\n账号: {account['account_name']}\n下单结果: {action}极速{('做多' if action == '做多' else '做空')}成功\n市场价格: {market_price}"
@@ -705,11 +929,13 @@ class BotManager:
                                     logger.warning("Bark 下单通知失败")
                             else:
                                 error_log = f"❌ 下单失败!\n时间: {shanghai_time}\n账号: {account['account_name']}\n详情: {action} {symbol}\n市场价格: {market_price}"
-                                await self.client.send_message(self.log_group_id, error_log)
+                                if self.log_group_id is not None:
+                                    await self.client.send_message(self.log_group_id, error_log)
                                 logger.error(f"账号 {account['account_name']} 下单失败")
                     except Exception as e:
                         error_msg = f"❌ 处理交易信号时出错!\n时间: {shanghai_time}\n错误: {str(e)}"
-                        await self.client.send_message(self.log_group_id, error_msg)
+                        if self.log_group_id is not None:
+                            await self.client.send_message(self.log_group_id, error_msg)
                         logger.error(f"处理交易信号时出错: {e}")
                         logger.error(traceback.format_exc())
                 
@@ -737,7 +963,8 @@ class BotManager:
                                 # 平仓成功后发送通知
                                 logger.info("发送平仓结果到日志记录群组...")
                                 close_log = f"🔄 平仓完成!\n时间: {shanghai_time}\n账号: {account['account_name']}\n详情: {close_type} {close_symbol}\n市场价格: {market_price}\n平仓结果: {len(close_results)} 个持仓"
-                                await self.client.send_message(self.log_group_id, close_log)
+                                if self.log_group_id is not None:
+                                    await self.client.send_message(self.log_group_id, close_log)
                                 logger.info("平仓结果已发送到日志记录群组")
 
                                 bark_close_message = f"时间: {shanghai_time}\n账号: {account['account_name']}\n平仓结果: {close_type} {close_symbol} 平仓完成\n市场价格: {market_price}"
@@ -747,11 +974,13 @@ class BotManager:
                                     logger.warning("Bark 平仓通知失败")
                             else:
                                 no_position_log = f"ℹ️ 无需平仓: 账号 {account['account_name']} 在 {close_symbol} 上没有相关持仓\n时间: {shanghai_time}\n详情: {close_type} {close_symbol}\n市场价格: {market_price}"
-                                await self.client.send_message(self.log_group_id, no_position_log)
+                                if self.log_group_id is not None:
+                                    await self.client.send_message(self.log_group_id, no_position_log)
                                 logger.info(f"账号 {account['account_name']} 无需平仓")
                     except Exception as e:
                         error_msg = f"❌ 处理平仓信号时出错!\n时间: {shanghai_time}\n错误: {str(e)}"
-                        await self.client.send_message(self.log_group_id, error_msg)
+                        if self.log_group_id is not None:
+                            await self.client.send_message(self.log_group_id, error_msg)
                         logger.error(f"处理平仓信号时出错: {e}")
                         logger.error(traceback.format_exc())
 
@@ -769,6 +998,34 @@ class BotManager:
                     logger.info("达到重启时间，准备重启...")
                     await self.send_restart_notification()
                     break
+
+                # 定期检查历史消息一致性
+                current_time = time.time()
+                for chat_id in group_ids:
+                    if current_time - self.last_history_check.get(chat_id, 0) >= self.history_check_interval:
+                        try:
+                            debug_logger.info(f"开始定期检查聊天 {chat_id} 的消息一致性")
+                            
+                            # 获取历史消息
+                            history_messages = await fetch_recent_messages(self.client, chat_id, limit=20)
+                            
+                            # 获取实时消息队列中的消息
+                            realtime_messages = []
+                            while not message_queue.empty():
+                                try:
+                                    msg = message_queue.get_nowait()
+                                    realtime_messages.append(msg)
+                                except queue.Empty:
+                                    break
+                            
+                            # 检查一致性
+                            consistency_report = check_message_consistency(chat_id, realtime_messages, history_messages)
+                            
+                            # 更新最后检查时间
+                            self.last_history_check[chat_id] = current_time
+                            
+                        except Exception as e:
+                            debug_logger.error(f"检查聊天 {chat_id} 消息一致性失败: {e}")
 
                 # 非阻塞等待30秒（使用异步等待）
                 await asyncio.sleep(30)
