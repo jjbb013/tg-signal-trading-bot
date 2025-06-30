@@ -14,11 +14,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN apt-get update && apt-get install -y supervisor \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# 创建数据目录
+RUN mkdir -p /data/sessions /data/logs
+
 # 复制项目代码和supervisor配置
 COPY . .
+
+# 设置执行权限
+RUN chmod +x /app/init_db.py
 
 # 暴露web终端端口
 EXPOSE 8080
 
-# 用supervisor同时管理监听和web终端
-CMD ["supervisord", "-c", "/app/supervisord.conf"] 
+# 启动命令：先初始化数据库，然后启动supervisor
+CMD ["sh", "-c", "python /app/init_db.py && supervisord -c /app/supervisord.conf"] 

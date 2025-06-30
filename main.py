@@ -30,13 +30,33 @@ SESSION_PATH = os.path.join(DATA_PATH, 'sessions')
 LOGS_PATH = os.path.join(DATA_PATH, 'logs')
 DB_PATH = os.path.join(DATA_PATH, 'trading_bot.db')
 
-# 确保目录存在
+# 确保目录存在并设置权限
 os.makedirs(DATA_PATH, exist_ok=True)
 os.makedirs(SESSION_PATH, exist_ok=True)
 os.makedirs(LOGS_PATH, exist_ok=True)
 
+# 设置目录权限
+try:
+    os.chmod(DATA_PATH, 0o755)
+    os.chmod(SESSION_PATH, 0o755)
+    os.chmod(LOGS_PATH, 0o755)
+except Exception as e:
+    print(f"设置目录权限失败: {e}")
+
+# 设置数据库环境变量
+os.environ['DATABASE_URL'] = f'sqlite:///{DB_PATH}'
+
 # 初始化数据持久化 - 使用Northflank Volumes路径
-create_tables()
+try:
+    create_tables()
+    print("数据库表创建成功")
+except Exception as e:
+    print(f"数据库表创建失败: {e}")
+    print(f"数据库路径: {DB_PATH}")
+    print(f"当前工作目录: {os.getcwd()}")
+    print(f"数据目录权限: {oct(os.stat(DATA_PATH).st_mode)[-3:]}")
+    sys.exit(1)
+
 file_manager = FileManager(DATA_PATH)
 
 # 日志设置

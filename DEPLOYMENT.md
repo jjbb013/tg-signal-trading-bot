@@ -817,4 +817,130 @@ northflank exec your-service-name -- sqlite3 /data/trading_bot.db "VACUUM;"
 
 ---
 
-**注意**: 本部署文档假设您已经在Northflank上配置了正确的环境变量和Volumes。请根据实际情况调整配置参数。 
+**注意**: 本部署文档假设您已经在Northflank上配置了正确的环境变量和Volumes。请根据实际情况调整配置参数。
+
+## 数据库权限问题解决方案
+
+在 Northflank 部署时，可能会遇到 SQLite 数据库文件无法打开的错误：
+
+```
+sqlite3.OperationalError: unable to open database file
+```
+
+### 问题原因
+
+这个错误通常是由于以下原因造成的：
+
+1. 数据库目录不存在
+2. 数据库目录权限不足
+3. 容器用户没有写入权限
+
+### 解决方案
+
+#### 方案1：使用环境变量配置数据库路径
+
+在 Northflank 的环境变量中设置：
+
+```
+DATA_PATH=/data
+DATABASE_URL=sqlite:////data/trading_bot.db
+```
+
+#### 方案2：确保数据卷挂载正确
+
+在 Northflank 配置中，确保数据卷正确挂载到 `/data` 目录。
+
+#### 方案3：手动创建数据库目录
+
+如果问题仍然存在，可以在容器启动时手动创建目录：
+
+```bash
+# 进入容器
+kubectl exec -it <pod-name> -- /bin/bash
+
+# 创建目录并设置权限
+mkdir -p /data/sessions /data/logs
+chmod 755 /data /data/sessions /data/logs
+chown -R 1000:1000 /data  # 如果使用非root用户
+```
+
+#### 方案4：使用内存数据库（临时解决方案）
+
+如果只是为了测试，可以临时使用内存数据库：
+
+```
+DATABASE_URL=sqlite:///:memory:
+```
+
+### 验证步骤
+
+1. 检查目录是否存在：
+   ```bash
+   ls -la /data/
+   ```
+
+2. 检查权限：
+   ```bash
+   ls -la /data/trading_bot.db
+   ```
+
+3. 测试数据库连接：
+   ```bash
+   python -c "from models import engine; print('数据库连接成功')"
+   ```
+
+### 常见问题
+
+#### Q: 为什么会出现权限问题？
+A: 在容器环境中，默认用户可能没有对挂载卷的写入权限。
+
+#### Q: 如何永久解决权限问题？
+A: 在 Dockerfile 中创建目录并设置正确的权限，或者使用 init 容器来设置权限。
+
+#### Q: 可以使用其他数据库吗？
+A: 是的，可以修改 `DATABASE_URL` 环境变量来使用 PostgreSQL 或 MySQL。
+
+### 环境变量配置
+
+确保以下环境变量正确设置：
+
+```bash
+# 必需的环境变量
+TG_API_ID=your_api_id
+TG_API_HASH=your_api_hash
+TG_PHONE_NUMBER=your_phone_number
+TG_GROUP_IDS=group_id1,group_id2
+
+# 数据路径配置
+DATA_PATH=/data
+DATABASE_URL=sqlite:////data/trading_bot.db
+
+# OKX 配置（可选）
+OKX1_API_KEY=your_api_key
+OKX1_SECRET_KEY=your_secret_key
+OKX1_PASSPHRASE=your_passphrase
+OKX1_LEVERAGE=10
+OKX1_FIXED_QTY_ETH=0.01
+OKX1_FIXED_QTY_BTC=0.001
+OKX1_ACCOUNT_NAME=OKX1
+OKX1_FLAG=1
+```
+
+### 故障排除
+
+如果仍然遇到问题，请检查：
+
+1. 容器日志：
+   ```bash
+   kubectl logs <pod-name>
+   ```
+
+2. 文件系统权限：
+   ```bash
+   kubectl exec -it <pod-name> -- ls -la /data/
+   ```
+
+3. 数据库文件状态：
+   ```bash
+   kubectl exec -it <pod-name> -- python -c "import sqlite3; sqlite3.connect('/data/trading_bot.db')"
+   ``` 

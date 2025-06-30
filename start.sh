@@ -15,6 +15,13 @@ echo "数据库路径: $DB_PATH"
 mkdir -p "$DATA_PATH/sessions"
 mkdir -p "$DATA_PATH/logs"
 
+# 确保数据目录存在并有正确权限
+mkdir -p /data/sessions /data/logs
+chmod 755 /data /data/sessions /data/logs
+
+# 设置数据库环境变量
+export DATABASE_URL="sqlite:////data/trading_bot.db"
+
 echo "目录创建完成"
 
 # 检查环境变量
@@ -37,3 +44,6 @@ fi
 # 启动机器人
 echo "启动 Telegram 交易机器人..."
 exec python main.py --daemon 
+
+# 启动应用
+exec "$@" 

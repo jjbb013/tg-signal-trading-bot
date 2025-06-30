@@ -6,6 +6,14 @@ import os
 
 # 创建数据库引擎
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./data/trading_bot.db')
+
+# 确保数据库目录存在
+if DATABASE_URL.startswith('sqlite:///'):
+    db_path = DATABASE_URL.replace('sqlite:///', '')
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if DATABASE_URL.startswith('sqlite') else {})
 
 # 创建会话工厂
