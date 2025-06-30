@@ -219,24 +219,32 @@ def send_bark_notification(bark_api_key, title, message):
 def extract_trade_info(message):
     logger.debug(f"正在从消息中提取交易信息: {message[:100]}...")
     
-    # 做多信号
+    # 做多信号 - 支持多种格式
     long_patterns = [
-        r'做多\s*([A-Z]+)',
-        r'([A-Z]+)\s*做多',
-        r'买入\s*([A-Z]+)',
-        r'([A-Z]+)\s*买入',
-        r'LONG\s*([A-Z]+)',
-        r'([A-Z]+)\s*LONG'
+        r'做多\s*([A-Z]+)',  # 做多 ETH
+        r'([A-Z]+)\s*做多',  # ETH 做多
+        r'买入\s*([A-Z]+)',  # 买入 ETH
+        r'([A-Z]+)\s*买入',  # ETH 买入
+        r'LONG\s*([A-Z]+)',  # LONG ETH
+        r'([A-Z]+)\s*LONG',  # ETH LONG
+        r'做多\s*\d+\.?\d*([A-Z]+)',  # 做多 0.072ETH
+        r'([A-Z]+)\s*做多\s*\d+\.?\d*',  # ETH 做多 0.072
+        r'买入\s*\d+\.?\d*([A-Z]+)',  # 买入 0.072ETH
+        r'([A-Z]+)\s*买入\s*\d+\.?\d*',  # ETH 买入 0.072
     ]
     
-    # 做空信号
+    # 做空信号 - 支持多种格式
     short_patterns = [
-        r'做空\s*([A-Z]+)',
-        r'([A-Z]+)\s*做空',
-        r'卖出\s*([A-Z]+)',
-        r'([A-Z]+)\s*卖出',
-        r'SHORT\s*([A-Z]+)',
-        r'([A-Z]+)\s*SHORT'
+        r'做空\s*([A-Z]+)',  # 做空 ETH
+        r'([A-Z]+)\s*做空',  # ETH 做空
+        r'卖出\s*([A-Z]+)',  # 卖出 ETH
+        r'([A-Z]+)\s*卖出',  # ETH 卖出
+        r'SHORT\s*([A-Z]+)',  # SHORT ETH
+        r'([A-Z]+)\s*SHORT',  # ETH SHORT
+        r'做空\s*\d+\.?\d*([A-Z]+)',  # 做空 0.072ETH
+        r'([A-Z]+)\s*做空\s*\d+\.?\d*',  # ETH 做空 0.072
+        r'卖出\s*\d+\.?\d*([A-Z]+)',  # 卖出 0.072ETH
+        r'([A-Z]+)\s*卖出\s*\d+\.?\d*',  # ETH 卖出 0.072
     ]
     
     # 检查做多信号
