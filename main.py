@@ -292,7 +292,7 @@ def generate_clord_id():
 
 def set_leverage(account, symbols):
     try:
-        trade_api = Trade.TradeAPI(
+        account_api = Account.AccountAPI(
             account['API_KEY'],
             account['SECRET_KEY'],
             account['PASSPHRASE'],
@@ -302,7 +302,7 @@ def set_leverage(account, symbols):
         
         for symbol in symbols:
             symbol_id = f"{symbol}-USDT-SWAP"
-            response = trade_api.set_leverage(
+            response = account_api.set_leverage(
                 instId=symbol_id,
                 lever=str(account['LEVERAGE']),
                 mgnMode='cross'
