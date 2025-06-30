@@ -517,7 +517,7 @@ def close_position(account, symbol, close_type='both'):
         positions_response = account_api.get_positions(instId=symbol_id)
         if positions_response.get('code') != '0':
             logger.error(f"获取持仓信息失败: {positions_response}")
-            return False
+            return None
         
         positions = positions_response['data']
         close_results = []
@@ -564,16 +564,16 @@ def close_position(account, symbol, close_type='both'):
         
         if close_results:
             log_system_message('INFO', 'trading', f"平仓完成: {account['account_name']} {symbol} {len(close_results)}个持仓")
-            return True
+            return close_results
         else:
             logger.info(f"账号 {account['account_name']} 在 {symbol} 上没有需要平仓的持仓")
-            return False
+            return []
             
     except Exception as e:
         logger.error(f"平仓时出错: {e}")
         logger.error(traceback.format_exc())
         log_system_message('ERROR', 'trading', f"平仓异常: {account['account_name']} {symbol} - {str(e)}")
-        return False
+        return None
 
 class BotManager:
     def __init__(self):
