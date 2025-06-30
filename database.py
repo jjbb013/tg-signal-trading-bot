@@ -221,8 +221,18 @@ class FileManager:
         """写入订单日志"""
         log_path = self.get_order_log_path()
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        order_record = f"{timestamp} | {json.dumps(order_info, ensure_ascii=False)}"
-        
+        # 自动将所有datetime字段转为字符串
+        def convert(obj):
+            if isinstance(obj, dict):
+                return {k: convert(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert(i) for i in obj]
+            elif hasattr(obj, 'isoformat'):
+                return obj.isoformat()
+            else:
+                return obj
+        safe_order_info = convert(order_info)
+        order_record = f"{timestamp} | {json.dumps(safe_order_info, ensure_ascii=False)}"
         try:
             with open(log_path, 'a', encoding='utf-8') as f:
                 f.write(order_record + '\n')

@@ -531,13 +531,21 @@ def close_position(account, symbol, close_type='both'):
             
             # 根据平仓类型决定是否平仓
             if close_type == 'both' or (close_type == 'long' and pos_side == 'long') or (close_type == 'short' and pos_side == 'short'):
-                side = 'sell' if pos_side == 'long' else 'buy'
+                # 平多：side=sell, posSide=long；平空：side=buy, posSide=short
+                if pos_side == 'long':
+                    side = 'sell'
+                elif pos_side == 'short':
+                    side = 'buy'
+                else:
+                    logger.error(f"未知的持仓方向: {pos_side}")
+                    continue
                 clord_id = generate_clord_id()
                 
                 response = trade_api.place_order(
                     instId=symbol_id,
                     tdMode='cross',
                     side=side,
+                    posSide=pos_side,
                     ordType='market',
                     sz=str(pos_size),
                     clOrdId=clord_id
