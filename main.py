@@ -395,7 +395,16 @@ def place_order(account, action, symbol):
         )
         
         symbol_id = f"{symbol}-USDT-SWAP"
-        side = 'buy' if action == '做多' else 'sell'
+        # 做多/做空参数
+        if action == '做多':
+            side = 'buy'
+            pos_side = 'long'
+        elif action == '做空':
+            side = 'sell'
+            pos_side = 'short'
+        else:
+            logger.error(f"未知的交易动作: {action}")
+            return False
         qty = account['FIXED_QTY'].get(symbol, '0.01')
         clord_id = generate_clord_id()
         
@@ -403,6 +412,7 @@ def place_order(account, action, symbol):
             instId=symbol_id,
             tdMode='cross',
             side=side,
+            posSide=pos_side,
             ordType='market',
             sz=qty,
             clOrdId=clord_id
