@@ -293,11 +293,11 @@ def generate_clord_id():
 def set_leverage(account, symbols):
     try:
         trade_api = Trade.TradeAPI(
-            api_key=account['API_KEY'],
-            secret_key=account['SECRET_KEY'],
-            passphrase=account['PASSPHRASE'],
-            flag=account['FLAG'],
-            debug=False
+            account['API_KEY'],
+            account['SECRET_KEY'],
+            account['PASSPHRASE'],
+            False,
+            account['FLAG']
         )
         
         for symbol in symbols:
@@ -332,11 +332,11 @@ def get_latest_market_price(symbol):
 def place_order(account, action, symbol):
     try:
         trade_api = Trade.TradeAPI(
-            api_key=account['API_KEY'],
-            secret_key=account['SECRET_KEY'],
-            passphrase=account['PASSPHRASE'],
-            flag=account['FLAG'],
-            debug=False
+            account['API_KEY'],
+            account['SECRET_KEY'],
+            account['PASSPHRASE'],
+            False,
+            account['FLAG']
         )
         
         symbol_id = f"{symbol}-USDT-SWAP"
@@ -431,19 +431,19 @@ def place_order(account, action, symbol):
 def close_position(account, symbol, close_type='both'):
     try:
         account_api = Account.AccountAPI(
-            api_key=account['API_KEY'],
-            secret_key=account['SECRET_KEY'],
-            passphrase=account['PASSPHRASE'],
-            flag=account['FLAG'],
-            debug=False
+            account['API_KEY'],
+            account['SECRET_KEY'],
+            account['PASSPHRASE'],
+            False,
+            account['FLAG']
         )
         
         trade_api = Trade.TradeAPI(
-            api_key=account['API_KEY'],
-            secret_key=account['SECRET_KEY'],
-            passphrase=account['PASSPHRASE'],
-            flag=account['FLAG'],
-            debug=False
+            account['API_KEY'],
+            account['SECRET_KEY'],
+            account['PASSPHRASE'],
+            False,
+            account['FLAG']
         )
         
         symbol_id = f"{symbol}-USDT-SWAP"
