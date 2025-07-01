@@ -153,6 +153,9 @@ for idx in range(1, 6):
 if not OKX_ACCOUNTS:
     logger.warning("未检测到任何OKX账号环境变量，自动下单功能将不可用。")
 
+# 全局平仓关键词，便于统一维护
+CLOSE_KEYWORDS = ['空止盈', '空止损', '多止盈', '多止损', '平多', '平空']
+
 # 订单日志记录 - 使用数据库和文件双重记录
 def log_order_to_database(order_info):
     """将订单信息记录到数据库"""
@@ -223,8 +226,7 @@ def extract_trade_info(message):
     logger.debug(f"正在从消息中提取交易信息: {message[:100]}...")
     
     # 首先检查是否包含平仓关键词，如果是平仓信号则不提取开仓信息
-    close_keywords = ['空止盈', '空止损', '多止盈', '多止损']
-    has_close_signal = any(keyword in message for keyword in close_keywords)
+    has_close_signal = any(keyword in message for keyword in CLOSE_KEYWORDS)
     
     if has_close_signal:
         logger.debug("检测到平仓信号，跳过开仓信号提取")
@@ -275,7 +277,7 @@ def extract_trade_info(message):
     for pattern in long_patterns:
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
-            symbol = match.group(1)
+            symbol = match.group(1).upper()
             logger.info(f"检测到做多信号: {symbol}")
             return '做多', symbol
     
@@ -283,7 +285,7 @@ def extract_trade_info(message):
     for pattern in short_patterns:
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
-            symbol = match.group(1)
+            symbol = match.group(1).upper()
             logger.info(f"检测到做空信号: {symbol}")
             return '做空', symbol
     
@@ -291,62 +293,30 @@ def extract_trade_info(message):
     return None, None
 
 def extract_close_signal(message):
-    """提取平仓信号，支持平多/平空关键词"""
+    """精简版：只返回 long 或 short，不再有 both"""
     logger.debug(f"正在从消息中提取平仓信号: {message[:100]}...")
 
-    # 检查是否包含标准平仓关键词
-    close_keywords = ['空止盈', '空止损', '多止盈', '多止损']
-    has_close_signal = any(keyword in message for keyword in close_keywords)
-
-    # 优先处理"平多""平空"关键词
-    pingduo_patterns = [r'平多\s*([A-Z]+)', r'([A-Z]+)\s*平多']
-    pingkong_patterns = [r'平空\s*([A-Z]+)', r'([A-Z]+)\s*平空']
-    for pattern in pingduo_patterns:
-        match = re.search(pattern, message, re.IGNORECASE)
-        if match:
-            symbol = match.group(1)
-            logger.info(f"检测到平多信号: {symbol}")
-            return 'long', symbol
-    for pattern in pingkong_patterns:
-        match = re.search(pattern, message, re.IGNORECASE)
-        if match:
-            symbol = match.group(1)
-            logger.info(f"检测到平空信号: {symbol}")
+    # 先判断多空止盈止损和平多/平空
+    if any(kw in message for kw in ['空止盈', '空止损', '平空']):
+        symbol_match = re.search(r'([A-Z]+)', message)
+        if symbol_match:
+            symbol = symbol_match.group(1).upper().split('USDT')[0]
+            logger.info(f"检测到平空/空止盈/空止损信号: {symbol}")
             return 'short', symbol
-
-    if not has_close_signal:
-        # 如果没有标准平仓关键词，检查通用平仓信号
-        close_patterns = [
-            r'平仓\s*([A-Z]+)',  # 平仓 ETH
-            r'([A-Z]+)\s*平仓',  # ETH 平仓
-            r'CLOSE\s*([A-Z]+)',  # CLOSE ETH
-            r'([A-Z]+)\s*CLOSE'  # ETH CLOSE
-        ]
-        for pattern in close_patterns:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                symbol = match.group(1)
-                logger.info(f"检测到通用平仓信号: {symbol}")
-                return 'both', symbol
-        return None, None
-
-    # 提取交易对信息
-    symbol_pattern = r"策略当前交易对:(\w+USDT\.P)"
-    symbol_match = re.search(symbol_pattern, message)
-    if symbol_match:
-        symbol = symbol_match.group(1).split('USDT')[0]
-        # 确定平仓类型
-        if '空止盈' in message or '空止损' in message:
-            close_type = 'short'
-        elif '多止盈' in message or '多止损' in message:
-            close_type = 'long'
         else:
-            close_type = 'both'
-        logger.info(f"成功提取平仓信号 - 类型: {close_type}, 符号: {symbol}")
-        return close_type, symbol
-    else:
-        logger.warning("无法从平仓信号中提取交易对信息")
-        return None, None
+            logger.warning("未能从平空/空止盈/空止损信号中提取币种")
+            return 'short', None
+    if any(kw in message for kw in ['多止盈', '多止损', '平多']):
+        symbol_match = re.search(r'([A-Z]+)', message)
+        if symbol_match:
+            symbol = symbol_match.group(1).upper().split('USDT')[0]
+            logger.info(f"检测到平多/多止盈/多止损信号: {symbol}")
+            return 'long', symbol
+        else:
+            logger.warning("未能从平多/多止盈/多止损信号中提取币种")
+            return 'long', None
+    logger.debug("未检测到平仓信号")
+    return None, None
 
 def get_shanghai_time():
     shanghai_tz = pytz.timezone('Asia/Shanghai')
@@ -366,7 +336,7 @@ def set_leverage(account, symbols):
         )
         
         for symbol in symbols:
-            symbol_id = f"{symbol}-USDT-SWAP"
+            symbol_id = f"{symbol.upper()}-USDT-SWAP"
             response = account_api.set_leverage(
                 instId=symbol_id,
                 lever=str(account['LEVERAGE']),
@@ -383,7 +353,7 @@ def set_leverage(account, symbols):
 def get_latest_market_price(symbol):
     try:
         market_api = MarketData.MarketAPI(debug=False)
-        symbol_id = f"{symbol}-USDT-SWAP"
+        symbol_id = f"{symbol.upper()}-USDT-SWAP"
         response = market_api.get_ticker(instId=symbol_id)
         if response.get('code') == '0':
             return float(response['data'][0]['last'])
@@ -404,7 +374,7 @@ def place_order(account, action, symbol):
             account['FLAG']
         )
         
-        symbol_id = f"{symbol}-USDT-SWAP"
+        symbol_id = f"{symbol.upper()}-USDT-SWAP"
         # 做多/做空参数
         if action == '做多':
             side = 'buy'
@@ -521,7 +491,7 @@ def close_position(account, symbol, close_type='both'):
             account['FLAG']
         )
         
-        symbol_id = f"{symbol}-USDT-SWAP"
+        symbol_id = f"{symbol.upper()}-USDT-SWAP"
         
         # 获取持仓信息
         positions_response = account_api.get_positions(instId=symbol_id)

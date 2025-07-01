@@ -5,6 +5,11 @@ session_*.session
 telegram_config.json
 okx_config.json
 listen_group.txt
+.env.local
+.env
+# 数据目录
+/data/
+data/
 
 # 日志文件
 logs/
