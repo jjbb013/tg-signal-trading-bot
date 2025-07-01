@@ -289,39 +289,48 @@ def extract_trade_info(message):
     return None, None
 
 def extract_close_signal(message):
-    """提取平仓信号"""
+    """提取平仓信号，支持平多/平空关键词"""
     logger.debug(f"正在从消息中提取平仓信号: {message[:100]}...")
-    
-    # 检查是否包含平仓关键词
+
+    # 检查是否包含标准平仓关键词
     close_keywords = ['空止盈', '空止损', '多止盈', '多止损']
     has_close_signal = any(keyword in message for keyword in close_keywords)
-    
+
+    # 优先处理"平多""平空"关键词
+    pingduo_patterns = [r'平多\s*([A-Z]+)', r'([A-Z]+)\s*平多']
+    pingkong_patterns = [r'平空\s*([A-Z]+)', r'([A-Z]+)\s*平空']
+    for pattern in pingduo_patterns:
+        match = re.search(pattern, message, re.IGNORECASE)
+        if match:
+            symbol = match.group(1)
+            logger.info(f"检测到平多信号: {symbol}")
+            return 'long', symbol
+    for pattern in pingkong_patterns:
+        match = re.search(pattern, message, re.IGNORECASE)
+        if match:
+            symbol = match.group(1)
+            logger.info(f"检测到平空信号: {symbol}")
+            return 'short', symbol
+
     if not has_close_signal:
         # 如果没有标准平仓关键词，检查通用平仓信号
         close_patterns = [
             r'平仓\s*([A-Z]+)',  # 平仓 ETH
             r'([A-Z]+)\s*平仓',  # ETH 平仓
-            r'平多\s*([A-Z]+)',  # 平多 ETH
-            r'([A-Z]+)\s*平多',  # ETH 平多
-            r'平空\s*([A-Z]+)',  # 平空 ETH
-            r'([A-Z]+)\s*平空',  # ETH 平空
             r'CLOSE\s*([A-Z]+)',  # CLOSE ETH
             r'([A-Z]+)\s*CLOSE'  # ETH CLOSE
         ]
-        
         for pattern in close_patterns:
             match = re.search(pattern, message, re.IGNORECASE)
             if match:
                 symbol = match.group(1)
                 logger.info(f"检测到通用平仓信号: {symbol}")
                 return 'both', symbol
-        
         return None, None
-    
+
     # 提取交易对信息
     symbol_pattern = r"策略当前交易对:(\w+USDT\.P)"
     symbol_match = re.search(symbol_pattern, message)
-    
     if symbol_match:
         symbol = symbol_match.group(1).split('USDT')[0]
         # 确定平仓类型
@@ -331,7 +340,6 @@ def extract_close_signal(message):
             close_type = 'long'
         else:
             close_type = 'both'
-        
         logger.info(f"成功提取平仓信号 - 类型: {close_type}, 符号: {symbol}")
         return close_type, symbol
     else:
