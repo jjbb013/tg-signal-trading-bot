@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv('.env.local')
 import asyncio
 from telethon.sync import TelegramClient
 import requests
