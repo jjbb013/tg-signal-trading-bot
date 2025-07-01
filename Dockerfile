@@ -20,11 +20,8 @@ RUN mkdir -p /data/sessions /data/logs
 # 复制项目代码和supervisor配置
 COPY . .
 
-# 设置执行权限
-RUN chmod +x /app/init_db.py
+# 暴露API端口（与api.py一致，默认8000）
+EXPOSE 8000
 
-# 暴露web终端端口
-EXPOSE 8080
-
-# 启动命令：先初始化数据库，然后启动supervisor
-CMD ["sh", "-c", "python /app/init_db.py && supervisord -c /app/supervisord.conf"] 
+# 启动命令：直接启动supervisor
+CMD ["supervisord", "-c", "/app/supervisord.conf"] 
