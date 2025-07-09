@@ -12,3 +12,4 @@ python-multipart  # 文件上传支持
 
 # 可选依赖
 # logging     # 日志记录（如果需要） 
+python-dotenv  # 本地开发自动加载.env.local 
