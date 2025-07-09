@@ -21,15 +21,34 @@ import json
 import subprocess
 import signal
 import argparse
+import okx_utils
 
 # 导入数据持久化模块
 from models import create_tables
 from database import DatabaseManager, FileManager
 
-# 数据路径配置 - 支持Northflank Volumes
-DATA_PATH = os.getenv('DATA_PATH', '/data')  # Northflank Volumes 映射到 /data
-SESSION_PATH = os.path.join(DATA_PATH, 'sessions')
-LOGS_PATH = os.path.join(DATA_PATH, 'logs')
+# 自动加载 .env.local（本地开发专用）
+if os.path.exists('.env.local'):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv('.env.local')
+        print("已自动加载 .env.local 环境变量")
+    except ImportError:
+        print("未安装 python-dotenv，无法自动加载 .env.local")
+
+# 自动切换 DATA_PATH
+DATA_PATH = os.getenv("DATA_PATH")
+if not DATA_PATH or DATA_PATH == 'None':
+    # 没有设置环境变量时自动判断
+    if os.path.exists("/data") and os.access("/data", os.W_OK):
+        DATA_PATH = "/data"
+    else:
+        DATA_PATH = "./data"
+
+# 确保目录存在并设置权限
+os.makedirs(DATA_PATH, exist_ok=True)
+SESSION_PATH = os.path.join(str(DATA_PATH), 'sessions')
+LOGS_PATH = os.path.join(str(DATA_PATH), 'logs')
 DB_PATH = os.path.join(DATA_PATH, 'trading_bot.db')
 
 # 确保目录存在并设置权限
@@ -365,6 +384,10 @@ def get_latest_market_price(symbol):
         return None
 
 def place_order(account, action, symbol):
+    """
+    使用 okx_utils 的 build_order_params 和 TradeAPI 下单，自动带止盈止损。
+    止盈1%，止损2.7%。
+    """
     try:
         trade_api = Trade.TradeAPI(
             account['API_KEY'],
@@ -373,35 +396,33 @@ def place_order(account, action, symbol):
             False,
             account['FLAG']
         )
-        
         symbol_id = f"{symbol.upper()}-USDT-SWAP"
-        # 做多/做空参数
+        market_price = get_latest_market_price(symbol)
+        if market_price is None:
+            logger.error(f"无法获取 {symbol} 最新价格，无法下单")
+            return False
+        # 计算止盈止损
         if action == '做多':
             side = 'buy'
             pos_side = 'long'
+            take_profit = round(market_price * 1.01, 2)
+            stop_loss = round(market_price * (1 - 0.027), 2)
         elif action == '做空':
             side = 'sell'
             pos_side = 'short'
+            take_profit = round(market_price * (1 - 0.01), 2)
+            stop_loss = round(market_price * (1 + 0.027), 2)
         else:
             logger.error(f"未知的交易动作: {action}")
             return False
         qty = account['FIXED_QTY'].get(symbol, '0.01')
-        clord_id = generate_clord_id()
-        
-        response = trade_api.place_order(
-            instId=symbol_id,
-            tdMode='cross',
-            side=side,
-            posSide=pos_side,
-            ordType='market',
-            sz=qty,
-            clOrdId=clord_id
+        # 构建下单参数
+        order_params = okx_utils.build_order_params(
+            symbol_id, side, market_price, qty, pos_side, take_profit, stop_loss
         )
-        
+        response = trade_api.place_order(**order_params)
         if response.get('code') == '0':
             order_id = response['data'][0]['ordId']
-            market_price = get_latest_market_price(symbol)
-            
             # 记录订单信息
             order_info = {
                 'timestamp': datetime.utcnow(),
@@ -417,17 +438,13 @@ def place_order(account, action, symbol):
                 'profit_loss': None,
                 'close_time': None
             }
-            
             log_order(order_info)
             log_system_message('INFO', 'trading', f"下单成功: {account['account_name']} {action} {symbol} {qty}")
-            
             logger.info(f"账号 {account['account_name']} {action} {symbol} 下单成功: {order_id}")
             return True
         else:
             error_msg = f"下单失败: {response}"
             logger.error(f"账号 {account['account_name']} {action} {symbol} {error_msg}")
-            
-            # 记录失败订单
             order_info = {
                 'timestamp': datetime.utcnow(),
                 'account_name': account['account_name'],
@@ -435,24 +452,20 @@ def place_order(account, action, symbol):
                 'symbol': symbol,
                 'quantity': float(qty),
                 'price': 0.0,
-                'market_price': get_latest_market_price(symbol) or 0.0,
-                'order_id': clord_id,
+                'market_price': market_price or 0.0,
+                'order_id': order_params.get('clOrdId', ''),
                 'status': '失败',
                 'error_message': error_msg,
                 'profit_loss': None,
                 'close_time': None
             }
-            
             log_order(order_info)
             log_system_message('ERROR', 'trading', f"下单失败: {account['account_name']} {action} {symbol} - {error_msg}")
-            
             return False
     except Exception as e:
         error_msg = f"下单异常: {str(e)}"
         logger.error(f"账号 {account['account_name']} {action} {symbol} {error_msg}")
         logger.error(traceback.format_exc())
-        
-        # 记录异常订单
         order_info = {
             'timestamp': datetime.utcnow(),
             'account_name': account['account_name'],
@@ -461,16 +474,14 @@ def place_order(account, action, symbol):
             'quantity': 0.0,
             'price': 0.0,
             'market_price': 0.0,
-            'order_id': generate_clord_id(),
+            'order_id': '',
             'status': '失败',
             'error_message': error_msg,
             'profit_loss': None,
             'close_time': None
         }
-        
         log_order(order_info)
         log_system_message('ERROR', 'trading', f"下单异常: {account['account_name']} {action} {symbol} - {error_msg}")
-        
         return False
 
 def close_position(account, symbol, close_type='both'):
@@ -767,6 +778,7 @@ class BotManager:
             await self.client.start()
             logger.info(f"Telegram 客户端已连接，开始监听群组: {TG_GROUP_IDS}")
             start_time = datetime.now()
+            last_check_time = datetime.utcnow()
             while not self.stop_event.is_set():
                 if datetime.now() - start_time >= self.restart_interval:
                     logger.info("达到重启时间，准备重启...")
@@ -775,6 +787,37 @@ class BotManager:
                 await asyncio.sleep(30)
                 current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 logger.debug(f"机器人仍在运行，当前时间: {current_time}")
+
+                # 每分钟检查一次补单
+                if (datetime.utcnow() - last_check_time).total_seconds() >= 60:
+                    last_check_time = datetime.utcnow()
+                    try:
+                        with DatabaseManager() as db:
+                            # 查询最近2小时所有有信号的消息
+                            since = datetime.utcnow() - timedelta(hours=2)
+                            messages = db.get_telegram_messages(limit=500, has_signal=True, start_date=since)
+                            # 查询所有已成功订单
+                            orders = db.get_trading_orders(limit=1000, start_date=since)
+                            order_keys = set((o['action'], o['symbol']) for o in orders if o['status'] == '成功')
+                            for msg in messages:
+                                # 补开仓信号
+                                if msg['signal_type'] == '交易信号':
+                                    key = (msg['signal_action'], msg['signal_symbol'])
+                                    if key not in order_keys and msg['signal_action'] in ['做多', '做空'] and msg['signal_symbol']:
+                                        logger.warning(f"检测到遗漏开仓信号，自动补单: {key}")
+                                        for account in OKX_ACCOUNTS:
+                                            place_order(account, msg['signal_action'], msg['signal_symbol'])
+                                # 补平仓信号
+                                elif msg['signal_type'] == '平仓信号':
+                                    key = (msg['signal_action'], msg['signal_symbol'])
+                                    # 平仓信号的 action 可能为 long/short/平多/平空/多止盈/多止损/空止盈/空止损
+                                    if key not in order_keys and msg['signal_action'] and msg['signal_symbol']:
+                                        logger.warning(f"检测到遗漏平仓信号，自动补平仓: {key}")
+                                        for account in OKX_ACCOUNTS:
+                                            close_position(account, msg['signal_symbol'], msg['signal_action'])
+                    except Exception as e:
+                        logger.error(f"补单检查异常: {e}")
+                        logger.error(traceback.format_exc())
             logger.info("正在断开Telegram连接...")
             if self.client and self.client.is_connected():
                 await self.client.disconnect()
