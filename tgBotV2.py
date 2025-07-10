@@ -9,11 +9,9 @@ from telethon.sync import TelegramClient
 from telethon import events
 from utils import get_shanghai_time, send_bark_notification
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv('.env')
-except Exception:
-    pass
+from dotenv import load_dotenv
+load_dotenv('.env')
+print("TG_API_ID from env:", os.getenv("TG_API_ID"))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger('tgBotV2')
@@ -55,17 +53,32 @@ def parse_signal(msg: str):
         "price": None,
         "action": None
     }
+    # 策略名
     m = re.search(r"^(.*?)\n=+", msg)
     if m:
         result["strategy"] = m.group(1).strip()
-    m = re.search(r"策略当前交易对[:：]?([A-Z]+)USDT\\.P", msg)
+    # 标的（更宽松，匹配冒号后所有非换行内容）
+    m = re.search(r"策略当前交易对[:：]?([A-Z0-9\\.]+)", msg)
     if m:
-        coin = m.group(1)
-        result["symbol"] = f"{coin}-USDT-SWAP"
+        raw = m.group(1).strip()
+        # 只给了单字母时，尝试用策略名补全
+        if len(raw) <= 3 and result["strategy"]:
+            coin = result["strategy"].split('-')[-1].replace('策略', '').replace(' ', '').upper()
+            result["symbol"] = f"{coin}-USDT-SWAP"
+        elif 'USDT.P' in raw:
+            coin = raw.replace('USDT.P', '')
+            result["symbol"] = f"{coin}-USDT-SWAP"
+        else:
+            result["symbol"] = f"{raw}-USDT-SWAP"
+    # 价格
     m = re.search(r"([A-Z]+)价格[:：]?([0-9.]+)", msg)
     if m:
-        result["price"] = float(m.group(2))
-    m = re.search(r"执行交易[:：]?([多空][止盈止损]?)", msg)
+        try:
+            result["price"] = float(m.group(2))
+        except Exception:
+            result["price"] = None
+    # 动作（完整匹配多止盈/多止损/空止盈/空止损/多开仓/空开仓/平多/平空）
+    m = re.search(r"执行交易[:：]?(多止盈|多止损|空止盈|空止损|多开仓|空开仓|平多|平空)", msg)
     if m:
         result["action"] = m.group(1)
     return result
