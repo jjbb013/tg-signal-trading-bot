@@ -7,7 +7,9 @@ import re
 from datetime import datetime, timedelta
 from telethon.sync import TelegramClient
 from telethon import events
-from utils import get_shanghai_time, send_bark_notification
+from utils import get_shanghai_time, send_bark_notification, build_order_params
+import okx.Trade as Trade
+import okx.MarketData as MarketData
 
 from dotenv import load_dotenv
 load_dotenv('.env')
@@ -45,6 +47,33 @@ TG_LOG_GROUP_ID = int(TG_LOG_GROUP_ID) if TG_LOG_GROUP_ID else None
 CHANNEL_IDS = [int(cid.strip()) for cid in TG_CHANNEL_IDS.split(',') if cid.strip()]
 
 client = TelegramClient(session_file, TG_API_ID, TG_API_HASH)
+
+# 读取测试账户配置
+def get_test_accounts():
+    accounts = []
+    for idx in range(1, 6):  # 支持最多5个账户
+        prefix = f'OKX{idx}_'
+        api_key = os.getenv(prefix + 'API_KEY')
+        secret_key = os.getenv(prefix + 'SECRET_KEY')
+        passphrase = os.getenv(prefix + 'PASSPHRASE')
+        flag = os.getenv(prefix + 'FLAG', '1')
+        
+        if api_key and secret_key and passphrase:
+            accounts.append({
+                'account_idx': idx,
+                'account_name': f'OKX{idx}',
+                'API_KEY': api_key,
+                'SECRET_KEY': secret_key,
+                'PASSPHRASE': passphrase,
+                'FLAG': flag
+            })
+            logger.info(f"加载账户配置: OKX{idx}")
+    
+    if not accounts:
+        logger.warning("未检测到任何OKX账户配置")
+    return accounts
+
+TEST_ACCOUNTS = get_test_accounts()
 
 def extract_trade_info(message):
     """从消息中提取开仓交易信息"""
@@ -145,7 +174,7 @@ def extract_close_signal(message):
     return None, None
 
 def get_order_size(account_idx, symbol):
-    coin = symbol.split('-')[0]
+    coin = symbol.split('-')[0] if '-' in symbol else symbol
     env_name = f"OKX{account_idx}_FIXED_QTY_{coin}"
     val = os.getenv(env_name)
     if val:
@@ -154,6 +183,21 @@ def get_order_size(account_idx, symbol):
         except Exception:
             return None
     return None
+
+def get_latest_market_price(symbol):
+    """获取最新市场价格"""
+    try:
+        market_api = MarketData.MarketAPI(debug=False)
+        symbol_id = f"{symbol.upper()}-USDT-SWAP"
+        response = market_api.get_ticker(instId=symbol_id)
+        if response.get('code') == '0':
+            return float(response['data'][0]['last'])
+        else:
+            logger.error(f"获取 {symbol} 市场价格失败: {response}")
+            return None
+    except Exception as e:
+        logger.error(f"获取市场价格时出错: {e}")
+        return None
 
 def build_bark_content(signal, account_name, entry_price, size, margin, take_profit, stop_loss, clOrdId, okx_resp=None, error_msg=None):
     now = get_shanghai_time()
@@ -197,20 +241,79 @@ def build_close_bark_content(close_type, symbol, account_name, close_results, ok
         lines.append(f"服务器响应消息: {okx_resp.get('msg', '')}")
     return "\n".join(lines)
 
-async def fake_okx_order(account_idx, signal, entry_price, size):
-    take_profit = entry_price * 1.01
-    stop_loss = entry_price * (1 - 0.027)
-    margin = round(entry_price * size * 0.1, 2)
-    clOrdId = f"SIM{int(time.time())}{account_idx}"
-    okx_resp = {"code": "0", "msg": "模拟下单成功"}
-    return {
-        "success": True,
-        "take_profit": take_profit,
-        "stop_loss": stop_loss,
-        "margin": margin,
-        "clOrdId": clOrdId,
-        "okx_resp": okx_resp
-    }
+async def place_okx_order(account, action, symbol, size):
+    """真实的OKX下单函数"""
+    try:
+        trade_api = Trade.TradeAPI(
+            account['API_KEY'],
+            account['SECRET_KEY'],
+            account['PASSPHRASE'],
+            False,
+            account['FLAG']
+        )
+        
+        symbol_id = f"{symbol.upper()}-USDT-SWAP"
+        market_price = get_latest_market_price(symbol)
+        
+        if market_price is None:
+            logger.error(f"无法获取 {symbol} 最新价格，无法下单")
+            return {
+                "success": False,
+                "error_msg": "无法获取市场价格"
+            }
+        
+        # 计算止盈止损
+        if action == '做多':
+            side = 'buy'
+            pos_side = 'long'
+            take_profit = round(market_price * 1.01, 2)  # 止盈1%
+            stop_loss = round(market_price * (1 - 0.027), 2)  # 止损2.7%
+        elif action == '做空':
+            side = 'sell'
+            pos_side = 'short'
+            take_profit = round(market_price * (1 - 0.01), 2)  # 止盈1%
+            stop_loss = round(market_price * (1 + 0.027), 2)  # 止损2.7%
+        else:
+            logger.error(f"未知的交易动作: {action}")
+            return {
+                "success": False,
+                "error_msg": f"未知的交易动作: {action}"
+            }
+        
+        # 构建下单参数
+        order_params = build_order_params(
+            symbol_id, side, market_price, size, pos_side, take_profit, stop_loss
+        )
+        
+        response = trade_api.place_order(**order_params)
+        
+        if response.get('code') == '0':
+            order_id = response['data'][0]['ordId']
+            cl_ord_id = order_params['clOrdId']
+            margin = round(market_price * size * 0.1, 2)  # 估算保证金
+            
+            return {
+                "success": True,
+                "take_profit": take_profit,
+                "stop_loss": stop_loss,
+                "margin": margin,
+                "clOrdId": cl_ord_id,
+                "okx_resp": response
+            }
+        else:
+            error_msg = response.get('data', [{}])[0].get('sMsg', '下单失败')
+            return {
+                "success": False,
+                "error_msg": error_msg,
+                "okx_resp": response
+            }
+            
+    except Exception as e:
+        logger.error(f"下单时出错: {e}")
+        return {
+            "success": False,
+            "error_msg": str(e)
+        }
 
 async def fake_close_position(account_idx, symbol, close_type):
     """模拟平仓函数"""
@@ -230,38 +333,39 @@ async def fake_close_position(account_idx, symbol, close_type):
 
 async def process_open_signal(action, symbol, price):
     """处理开仓信号"""
-    for account_idx in [1, 2]:
-        size = get_order_size(account_idx, symbol)
+    for account in TEST_ACCOUNTS:
+        size = get_order_size(account['account_idx'], symbol)
         if not size:
-            logger.warning(f"未配置账户{account_idx}的下单数量，跳过")
+            logger.warning(f"未配置账户{account['account_name']}的下单数量，跳过")
             continue
-        entry_price = price
-        order_result = await fake_okx_order(account_idx, {'symbol': symbol, 'action': action}, entry_price, size)
+        
+        order_result = await place_okx_order(account, action, symbol, size)
+        
         bark_title = f"Tg信号策略{action}-{symbol}"
         bark_content = build_bark_content(
             signal={'symbol': symbol, 'action': action},
-            account_name=f"OKX{account_idx}",
-            entry_price=entry_price,
+            account_name=account['account_name'],
+            entry_price=price if price else 0,
             size=size,
-            margin=order_result['margin'],
-            take_profit=order_result['take_profit'],
-            stop_loss=order_result['stop_loss'],
-            clOrdId=order_result['clOrdId'],
-            okx_resp=order_result['okx_resp'] if order_result['success'] else None,
-            error_msg=None if order_result['success'] else "下单失败"
+            margin=order_result.get('margin', 0),
+            take_profit=order_result.get('take_profit', 0),
+            stop_loss=order_result.get('stop_loss', 0),
+            clOrdId=order_result.get('clOrdId', ''),
+            okx_resp=order_result.get('okx_resp'),
+            error_msg=order_result.get('error_msg')
         )
         send_bark_notification(bark_title, bark_content)
         logger.info(f"Bark通知已发送: {bark_title}")
 
 async def process_close_signal(close_type, symbol):
     """处理平仓信号"""
-    for account_idx in [1, 2]:
-        close_result = await fake_close_position(account_idx, symbol, close_type)
+    for account in TEST_ACCOUNTS:
+        close_result = await fake_close_position(account['account_idx'], symbol, close_type)
         bark_title = f"Tg信号策略平仓-{symbol}"
         bark_content = build_close_bark_content(
             close_type=close_type,
             symbol=symbol,
-            account_name=f"OKX{account_idx}",
+            account_name=account['account_name'],
             close_results=close_result['close_results'],
             okx_resp=close_result['okx_resp'] if close_result['success'] else None,
             error_msg=None if close_result['success'] else "平仓失败"
