@@ -383,7 +383,7 @@ async def main():
         sender = await event.get_sender()
         sender_name = getattr(sender, 'username', None) or getattr(sender, 'first_name', '')
         sh_time = get_shanghai_time()
-        log_msg = f"[{sh_time}] 来自频道{event.chat_id} 用户{sender_name} 消息: {msg[:100]}"
+        log_msg = f"[{sh_time}] 来自频道{event.chat_id} 用户{sender_name} 消息: {msg[:200]}"
         logger.info(log_msg)
         if TG_LOG_GROUP_ID:
             await client.send_message(TG_LOG_GROUP_ID, log_msg)
