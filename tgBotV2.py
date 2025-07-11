@@ -374,7 +374,7 @@ async def process_close_signal(close_type, symbol):
         logger.info(f"Bark通知已发送: {bark_title}")
 
 async def main():
-    client.start()
+    await client.start()
     logger.info(f'已登录 Telegram，监听频道: {CHANNEL_IDS}')
 
     @client.on(events.NewMessage(chats=CHANNEL_IDS))
@@ -400,7 +400,7 @@ async def main():
             logger.info(f"检测到平仓信号: {close_type} {close_symbol}")
             await process_close_signal(close_type, close_symbol)
 
-    client.run_until_disconnected()
+    await client.run_until_disconnected()
 
 if __name__ == '__main__':
     asyncio.run(main())
