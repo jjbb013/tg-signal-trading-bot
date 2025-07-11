@@ -23,30 +23,19 @@ logger = logging.getLogger('tgBotV2')
 SESSION_DIR = os.getenv('SESSION_DIR', './data/sessions')
 os.makedirs(SESSION_DIR, exist_ok=True)
 
-LAST_SESSION_PATH_FILE = os.path.join(SESSION_DIR, '../last_session_path.txt')
-
-# 优先读取上次使用的 session 文件
-if os.path.exists(LAST_SESSION_PATH_FILE):
-    with open(LAST_SESSION_PATH_FILE, 'r', encoding='utf-8') as f:
-        session_file = f.read().strip()
-    print(f'自动复用上次 session 文件: {session_file}')
-else:
-    sessions = [f for f in os.listdir(SESSION_DIR) if f.endswith('.session')]
-    if sessions:
-        print('检测到以下 Telegram session 文件：')
-        for idx, s in enumerate(sessions):
-            print(f'{idx+1}: {s}')
-        choice = input('请选择要使用的 session 文件编号，或输入 n 新建登录: ')
-        if choice.isdigit() and 1 <= int(choice) <= len(sessions):
-            session_file = os.path.join(SESSION_DIR, sessions[int(choice)-1])
-        else:
-            session_file = os.path.join(SESSION_DIR, f'session_{int(time.time())}.session')
+sessions = [f for f in os.listdir(SESSION_DIR) if f.endswith('.session')]
+if sessions:
+    print('检测到以下 Telegram session 文件：')
+    for idx, s in enumerate(sessions):
+        print(f'{idx+1}: {s}')
+    choice = input('请选择要使用的 session 文件编号，或输入 n 新建登录: ')
+    if choice.isdigit() and 1 <= int(choice) <= len(sessions):
+        session_file = os.path.join(SESSION_DIR, sessions[int(choice)-1])
     else:
-        print('未检测到 session 文件，将新建登录')
         session_file = os.path.join(SESSION_DIR, f'session_{int(time.time())}.session')
-    # 记录本次选择
-    with open(LAST_SESSION_PATH_FILE, 'w', encoding='utf-8') as f:
-        f.write(session_file)
+else:
+    print('未检测到 session 文件，将新建登录')
+    session_file = os.path.join(SESSION_DIR, f'session_{int(time.time())}.session')
 
 TG_API_ID = os.getenv('TG_API_ID')
 TG_API_HASH = os.getenv('TG_API_HASH')
@@ -401,9 +390,6 @@ async def place_okx_order(account, action, symbol, size):
             }
         # 杠杆倍数，优先取账户配置，否则默认10
         leverage = int(os.getenv(f"OKX{account['account_idx']}_LEVERAGE", 10))
-        # 保证金计算
-        margin = round(market_price * size / leverage, 4)
-        logger.info(f"保证金计算参数: 市价={market_price}, 数量={size}, 杠杆={leverage}, 保证金={margin}")
         # 构建下单参数
         order_params = build_order_params(
             symbol_id, side, market_price, size, pos_side, take_profit, stop_loss
@@ -412,6 +398,7 @@ async def place_okx_order(account, action, symbol, size):
         if response.get('code') == '0' and response.get('data') and len(response['data']) > 0:
             order_id = response['data'][0].get('ordId', '')
             cl_ord_id = order_params['clOrdId']
+            margin = round(market_price * size / leverage, 2)  # 正确的保证金计算
             return {
                 "success": True,
                 "take_profit": take_profit,

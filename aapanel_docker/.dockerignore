@@ -1,0 +1,5 @@
+data/sessions/*
+data/trading_bot.db
+logs/*
+.env
+processed_message_ids.json 
