@@ -10,6 +10,8 @@ from telethon import events
 from utils import get_shanghai_time, send_bark_notification, build_order_params
 import okx.Trade as Trade
 import okx.MarketData as MarketData
+import okx.Account as Account
+import json
 
 from dotenv import load_dotenv
 load_dotenv('.env')
@@ -75,6 +77,115 @@ def get_test_accounts():
     return accounts
 
 TEST_ACCOUNTS = get_test_accounts()
+
+PROCESSED_IDS_FILE = 'processed_message_ids.json'
+
+# 加载/保存消息ID缓存
+
+def load_processed_ids():
+    try:
+        with open(PROCESSED_IDS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            # 转为 set 方便后续处理
+            return {int(k): set(v) for k, v in data.items()}
+    except Exception:
+        return {}
+
+def save_processed_ids(processed_ids):
+    try:
+        # set 转 list 方便序列化
+        data = {str(k): list(v) for k, v in processed_ids.items()}
+        with open(PROCESSED_IDS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"保存消息ID缓存失败: {e}")
+
+# 初始化缓存
+PROCESSED_MESSAGE_IDS = load_processed_ids()
+
+# 提取信号中的价格，如“ETH价格:2633.96”
+def extract_signal_price(message):
+    match = re.search(r"[A-Z]+价格[:：]([0-9]+\.?[0-9]*)", message)
+    if match:
+        return float(match.group(1))
+    return None
+
+async def init_processed_ids():
+    updated = False
+    for channel_id in CHANNEL_IDS:
+        if channel_id not in PROCESSED_MESSAGE_IDS:
+            PROCESSED_MESSAGE_IDS[channel_id] = set()
+        async for message in client.iter_messages(channel_id, limit=20):
+            if message and message.id not in PROCESSED_MESSAGE_IDS[channel_id]:
+                PROCESSED_MESSAGE_IDS[channel_id].add(message.id)
+                updated = True
+    if updated:
+        save_processed_ids(PROCESSED_MESSAGE_IDS)
+
+async def check_and_patch_missing_signals():
+    while True:
+        logger.info('【定时补单检查】正在检查各频道最近20条消息...')
+        # 每次定时检查前都重新加载缓存，实现热编辑支持
+        global PROCESSED_MESSAGE_IDS
+        PROCESSED_MESSAGE_IDS = load_processed_ids()
+        try:
+            for channel_id in CHANNEL_IDS:
+                if channel_id not in PROCESSED_MESSAGE_IDS:
+                    PROCESSED_MESSAGE_IDS[channel_id] = set()
+                async for message in client.iter_messages(channel_id, limit=20):
+                    if not message or not message.text:
+                        continue
+                    msg_id = message.id
+                    if msg_id in PROCESSED_MESSAGE_IDS[channel_id]:
+                        continue
+                    # 只处理新消息
+                    PROCESSED_MESSAGE_IDS[channel_id].add(msg_id)
+                    save_processed_ids(PROCESSED_MESSAGE_IDS)
+                    msg_text = message.text
+                    action, symbol = extract_trade_info(msg_text)
+                    close_type, close_symbol = extract_close_signal(msg_text)
+                    signal_price = extract_signal_price(msg_text)
+                    # 补开仓信号
+                    if action and symbol:
+                        # 做多/做空需比价
+                        if action in ['做多', '做空'] and signal_price:
+                            market_price = get_latest_market_price(symbol)
+                            if not market_price:
+                                logger.warning(f"补单时获取市场价失败: {symbol}")
+                                continue
+                            price_diff = (market_price - signal_price) / signal_price
+                            bark_title = f"补单价格检查-{action}-{symbol}"
+                            if action == '做多':
+                                if market_price <= signal_price:
+                                    await process_open_signal(action, symbol, signal_price)
+                                elif 0 < price_diff <= 0.005:
+                                    await process_open_signal(action, symbol, signal_price)
+                                else:
+                                    content = f"做多信号，市场价高于信号价超0.5%，不下单\n信号价:{signal_price}, 市场价:{market_price}"
+                                    logger.warning(content)
+                                    send_bark_notification(bark_title, content)
+                                    if TG_LOG_GROUP_ID:
+                                        await client.send_message(TG_LOG_GROUP_ID, content)
+                            elif action == '做空':
+                                if market_price >= signal_price:
+                                    await process_open_signal(action, symbol, signal_price)
+                                elif 0 < -price_diff <= 0.005:
+                                    await process_open_signal(action, symbol, signal_price)
+                                else:
+                                    content = f"做空信号，市场价低于信号价超0.5%，不下单\n信号价:{signal_price}, 市场价:{market_price}"
+                                    logger.warning(content)
+                                    send_bark_notification(bark_title, content)
+                                    if TG_LOG_GROUP_ID:
+                                        await client.send_message(TG_LOG_GROUP_ID, content)
+                        else:
+                            # 其他信号或无价格，直接补单
+                            await process_open_signal(action, symbol, signal_price or 0)
+                    # 补平仓信号
+                    elif close_type and close_symbol:
+                        await process_close_signal(close_type, close_symbol)
+        except Exception as e:
+            logger.error(f"历史消息补单检查异常: {e}")
+        await asyncio.sleep(30)
 
 def extract_trade_info(message):
     """从消息中提取开仓交易信息"""
@@ -252,17 +363,14 @@ async def place_okx_order(account, action, symbol, size):
             False,
             account['FLAG']
         )
-        
         symbol_id = f"{symbol.upper()}-USDT-SWAP"
         market_price = get_latest_market_price(symbol)
-        
         if market_price is None:
             logger.error(f"无法获取 {symbol} 最新价格，无法下单")
             return {
                 "success": False,
                 "error_msg": "无法获取市场价格"
             }
-        
         # 计算止盈止损
         if action == '做多':
             side = 'buy'
@@ -280,25 +388,25 @@ async def place_okx_order(account, action, symbol, size):
                 "success": False,
                 "error_msg": f"未知的交易动作: {action}"
             }
-        
+        # 杠杆倍数，优先取账户配置，否则默认10
+        leverage = int(os.getenv(f"OKX{account['account_idx']}_LEVERAGE", 10))
         # 构建下单参数
         order_params = build_order_params(
             symbol_id, side, market_price, size, pos_side, take_profit, stop_loss
         )
-        
         response = trade_api.place_order(**order_params)
-        
         if response.get('code') == '0' and response.get('data') and len(response['data']) > 0:
             order_id = response['data'][0].get('ordId', '')
             cl_ord_id = order_params['clOrdId']
-            margin = round(market_price * size * 0.1, 2)  # 估算保证金
+            margin = round(market_price * size / leverage, 2)  # 正确的保证金计算
             return {
                 "success": True,
                 "take_profit": take_profit,
                 "stop_loss": stop_loss,
                 "margin": margin,
                 "clOrdId": cl_ord_id,
-                "okx_resp": response
+                "okx_resp": response,
+                "market_price": market_price
             }
         else:
             error_msg = None
@@ -309,9 +417,9 @@ async def place_okx_order(account, action, symbol, size):
             return {
                 "success": False,
                 "error_msg": error_msg,
-                "okx_resp": response
+                "okx_resp": response,
+                "market_price": market_price
             }
-            
     except Exception as e:
         logger.error(f"下单时出错: {e}")
         return {
@@ -335,6 +443,87 @@ async def fake_close_position(account_idx, symbol, close_type):
         "okx_resp": okx_resp
     }
 
+async def close_okx_position(account, symbol, close_type):
+    """真实的OKX平仓函数，只平当前信号方向的仓位"""
+    try:
+        account_api = Account.AccountAPI(
+            account['API_KEY'],
+            account['SECRET_KEY'],
+            account['PASSPHRASE'],
+            False,
+            account['FLAG']
+        )
+        trade_api = Trade.TradeAPI(
+            account['API_KEY'],
+            account['SECRET_KEY'],
+            account['PASSPHRASE'],
+            False,
+            account['FLAG']
+        )
+        symbol_id = f"{symbol.upper()}-USDT-SWAP"
+        # 获取持仓信息
+        positions_response = account_api.get_positions(instId=symbol_id)
+        if positions_response.get('code') != '0':
+            logger.error(f"获取持仓信息失败: {positions_response}")
+            return {
+                "success": False,
+                "close_results": [],
+                "okx_resp": positions_response,
+                "error_msg": "获取持仓信息失败"
+            }
+        positions = positions_response['data']
+        close_results = []
+        for position in positions:
+            pos_side = position['posSide']
+            pos_size = float(position['pos'])
+            if pos_size == 0:
+                continue
+            # 只平当前信号方向的仓位
+            if (close_type == 'long' and pos_side == 'long') or (close_type == 'short' and pos_side == 'short'):
+                # 平多：side=sell, posSide=long；平空：side=buy, posSide=short
+                side = 'sell' if pos_side == 'long' else 'buy'
+                clord_id = f"CLOSE{int(time.time())}{account['account_idx']}"
+                response = trade_api.place_order(
+                    instId=symbol_id,
+                    tdMode='cross',
+                    side=side,
+                    posSide=pos_side,
+                    ordType='market',
+                    sz=str(pos_size),
+                    clOrdId=clord_id
+                )
+                if response.get('code') == '0':
+                    order_id = response['data'][0]['ordId']
+                    close_results.append({
+                        'pos_side': pos_side,
+                        'size': pos_size,
+                        'order_id': order_id
+                    })
+                    logger.info(f"账号 {account['account_name']} 平仓 {pos_side} {symbol} 成功: {order_id}")
+                else:
+                    logger.error(f"账号 {account['account_name']} 平仓 {pos_side} {symbol} 失败: {response}")
+        if close_results:
+            return {
+                "success": True,
+                "close_results": close_results,
+                "okx_resp": {"code": "0", "msg": "平仓完成"}
+            }
+        else:
+            logger.info(f"账号 {account['account_name']} 在 {symbol} 上没有需要平仓的持仓")
+            return {
+                "success": True,
+                "close_results": [],
+                "okx_resp": {"code": "0", "msg": "无持仓可平"}
+            }
+    except Exception as e:
+        logger.error(f"平仓时出错: {e}")
+        return {
+            "success": False,
+            "close_results": [],
+            "okx_resp": {},
+            "error_msg": str(e)
+        }
+
 async def process_open_signal(action, symbol, price):
     """处理开仓信号"""
     for account in TEST_ACCOUNTS:
@@ -347,10 +536,12 @@ async def process_open_signal(action, symbol, price):
         order_result = await place_okx_order(account, action, symbol, size)
         logger.info(f"下单返回结果: {order_result}")
         bark_title = f"Tg信号策略{action}-{symbol}"
+        # entry_price 用实际下单市场价
+        entry_price = order_result.get('market_price', 0)
         bark_content = build_bark_content(
             signal={'symbol': symbol, 'action': action},
             account_name=account['account_name'],
-            entry_price=price if price else 0,
+            entry_price=entry_price,
             size=size,
             margin=order_result.get('margin', 0),
             take_profit=order_result.get('take_profit', 0),
@@ -367,7 +558,7 @@ async def process_close_signal(close_type, symbol):
     """处理平仓信号"""
     for account in TEST_ACCOUNTS:
         logger.info(f"准备为账户 {account['account_name']} 平仓，参数如下：close_type: {close_type}, symbol: {symbol}")
-        close_result = await fake_close_position(account['account_idx'], symbol, close_type)
+        close_result = await close_okx_position(account, symbol, close_type)
         logger.info(f"平仓返回结果: {close_result}")
         bark_title = f"Tg信号策略平仓-{symbol}"
         bark_content = build_close_bark_content(
@@ -376,15 +567,30 @@ async def process_close_signal(close_type, symbol):
             account_name=account['account_name'],
             close_results=close_result['close_results'],
             okx_resp=close_result['okx_resp'] if close_result['success'] else None,
-            error_msg=None if close_result['success'] else "平仓失败"
+            error_msg=None if close_result['success'] else close_result.get('error_msg', '平仓失败')
         )
         logger.info(f"准备发送Bark通知，参数如下：title={bark_title}, content={bark_content}")
         send_bark_notification(bark_title, bark_content)
         logger.info(f"Bark通知已发送: {bark_title}")
 
+async def auto_restart_every_30min():
+    while True:
+        await asyncio.sleep(1800)  # 30分钟
+        logger.info('【自动重启】30分钟到，准备重启进程...')
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
 async def main():
     await client.start()
     logger.info(f'已登录 Telegram，监听频道: {CHANNEL_IDS}')
+
+    # 初始化消息ID缓存（最近20条默认不补单）
+    await init_processed_ids()
+
+    # 启动消息遗漏检测定时任务
+    asyncio.create_task(check_and_patch_missing_signals())
+
+    # 启动定时重启任务
+    asyncio.create_task(auto_restart_every_30min())
 
     @client.on(events.NewMessage(chats=CHANNEL_IDS))
     async def handler(event):
@@ -396,13 +602,19 @@ async def main():
         logger.info(log_msg)
         if TG_LOG_GROUP_ID:
             await client.send_message(TG_LOG_GROUP_ID, log_msg)
-        
+        # 处理信号前，登记消息ID，避免重复下单
+        channel_id = event.chat_id
+        msg_id = event.id
+        if channel_id not in PROCESSED_MESSAGE_IDS:
+            PROCESSED_MESSAGE_IDS[channel_id] = set()
+        if msg_id not in PROCESSED_MESSAGE_IDS[channel_id]:
+            PROCESSED_MESSAGE_IDS[channel_id].add(msg_id)
+            save_processed_ids(PROCESSED_MESSAGE_IDS)
         # 提取开仓信号
         action, symbol = extract_trade_info(msg)
         if action and symbol:
             logger.info(f"检测到开仓信号: {action} {symbol}")
             await process_open_signal(action, symbol, 0)  # 价格暂时设为0，实际应从信号中提取
-        
         # 提取平仓信号
         close_type, close_symbol = extract_close_signal(msg)
         if close_type and close_symbol:
