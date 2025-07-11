@@ -69,6 +69,7 @@ def get_test_accounts():
             })
             logger.info(f"加载账户配置: OKX{idx}")
     
+    logger.info(f"共检测到 {len(accounts)} 个有效OKX账户")
     if not accounts:
         logger.warning("未检测到任何OKX账户配置")
     return accounts
@@ -341,9 +342,10 @@ async def process_open_signal(action, symbol, price):
         if not size:
             logger.warning(f"未配置账户{account['account_name']}的下单数量，跳过")
             continue
-        
+        logger.info(f"准备为账户 {account['account_name']} 下单，参数如下：")
+        logger.info(f"action: {action}, symbol: {symbol}, size: {size}")
         order_result = await place_okx_order(account, action, symbol, size)
-        
+        logger.info(f"下单返回结果: {order_result}")
         bark_title = f"Tg信号策略{action}-{symbol}"
         bark_content = build_bark_content(
             signal={'symbol': symbol, 'action': action},
@@ -357,13 +359,16 @@ async def process_open_signal(action, symbol, price):
             okx_resp=order_result.get('okx_resp'),
             error_msg=order_result.get('error_msg')
         )
+        logger.info(f"准备发送Bark通知，参数如下：title={bark_title}, content={bark_content}")
         send_bark_notification(bark_title, bark_content)
         logger.info(f"Bark通知已发送: {bark_title}")
 
 async def process_close_signal(close_type, symbol):
     """处理平仓信号"""
     for account in TEST_ACCOUNTS:
+        logger.info(f"准备为账户 {account['account_name']} 平仓，参数如下：close_type: {close_type}, symbol: {symbol}")
         close_result = await fake_close_position(account['account_idx'], symbol, close_type)
+        logger.info(f"平仓返回结果: {close_result}")
         bark_title = f"Tg信号策略平仓-{symbol}"
         bark_content = build_close_bark_content(
             close_type=close_type,
@@ -373,6 +378,7 @@ async def process_close_signal(close_type, symbol):
             okx_resp=close_result['okx_resp'] if close_result['success'] else None,
             error_msg=None if close_result['success'] else "平仓失败"
         )
+        logger.info(f"准备发送Bark通知，参数如下：title={bark_title}, content={bark_content}")
         send_bark_notification(bark_title, bark_content)
         logger.info(f"Bark通知已发送: {bark_title}")
 
