@@ -287,11 +287,10 @@ async def place_okx_order(account, action, symbol, size):
         
         response = trade_api.place_order(**order_params)
         
-        if response.get('code') == '0':
-            order_id = response['data'][0]['ordId']
+        if response.get('code') == '0' and response.get('data') and len(response['data']) > 0:
+            order_id = response['data'][0].get('ordId', '')
             cl_ord_id = order_params['clOrdId']
             margin = round(market_price * size * 0.1, 2)  # 估算保证金
-            
             return {
                 "success": True,
                 "take_profit": take_profit,
@@ -301,7 +300,11 @@ async def place_okx_order(account, action, symbol, size):
                 "okx_resp": response
             }
         else:
-            error_msg = response.get('data', [{}])[0].get('sMsg', '下单失败')
+            error_msg = None
+            if response.get('data') and isinstance(response['data'], list) and len(response['data']) > 0:
+                error_msg = response['data'][0].get('sMsg', '下单失败')
+            else:
+                error_msg = response.get('msg', '下单失败')
             return {
                 "success": False,
                 "error_msg": error_msg,
