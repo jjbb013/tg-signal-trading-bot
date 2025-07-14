@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timedelta
 from telethon.sync import TelegramClient
 from telethon import events
-from utils import get_shanghai_time, send_bark_notification, build_order_params
+from utils import get_shanghai_time, send_bark_notification, build_order_params, set_account_leverage
 import okx.Trade as Trade
 import okx.MarketData as MarketData
 import okx.Account as Account
@@ -133,6 +133,12 @@ async def init_processed_ids():
     if updated:
         save_processed_ids(PROCESSED_MESSAGE_IDS)
 
+# ===== 可调参数区 =====
+# 支持通过环境变量设置（单位：秒），如未设置则用默认值
+AUTO_RESTART_INTERVAL = int(os.getenv('AUTO_RESTART_INTERVAL', 1800))  # 自动重启间隔，默认30分钟
+PATCH_MISSING_SIGNALS_INTERVAL = int(os.getenv('PATCH_MISSING_SIGNALS_INTERVAL', 30))  # 定时补单检查间隔，默认30秒
+# =====================
+
 async def check_and_patch_missing_signals():
     while True:
         logger.info('【定时补单检查】正在检查各频道最近20条消息...')
@@ -196,7 +202,7 @@ async def check_and_patch_missing_signals():
                         await process_close_signal(close_type, close_symbol)
         except Exception as e:
             logger.error(f"历史消息补单检查异常: {e}")
-        await asyncio.sleep(30)
+        await asyncio.sleep(PATCH_MISSING_SIGNALS_INTERVAL)
 
 def extract_trade_info(message):
     """从消息中提取开仓交易信息"""
@@ -399,16 +405,17 @@ async def place_okx_order(account, action, symbol, size):
                 "success": False,
                 "error_msg": f"未知的交易动作: {action}"
             }
-        # 杠杆倍数，优先取账户配置，否则默认10
         leverage = int(os.getenv(f"OKX{account['account_idx']}_LEVERAGE", 10))
-        # 保证金计算
         margin = round(market_price * size / leverage, 4)
         logger.info(f"保证金计算参数: 市价={market_price}, 数量={size}, 杠杆={leverage}, 保证金={margin}")
-        # 构建下单参数
         order_params = build_order_params(
             symbol_id, side, market_price, size, pos_side, take_profit, stop_loss
         )
+        # 打印下单参数原始json
+        print("下单参数:", json.dumps(order_params, ensure_ascii=False, indent=2))
         response = trade_api.place_order(**order_params)
+        # 打印服务器返回原始json
+        print("服务器返回:", json.dumps(response, ensure_ascii=False, indent=2))
         if response.get('code') == '0' and response.get('data') and len(response['data']) > 0:
             order_id = response['data'][0].get('ordId', '')
             cl_ord_id = order_params['clOrdId']
@@ -439,6 +446,22 @@ async def place_okx_order(account, action, symbol, size):
             "success": False,
             "error_msg": str(e)
         }
+
+async def fake_close_position(account_idx, symbol, close_type):
+    """模拟平仓函数"""
+    close_results = [
+        {
+            'pos_side': 'long' if close_type == 'long' else 'short',
+            'size': 0.05,
+            'order_id': f"CLOSE{int(time.time())}{account_idx}"
+        }
+    ]
+    okx_resp = {"code": "0", "msg": "模拟平仓成功"}
+    return {
+        "success": True,
+        "close_results": close_results,
+        "okx_resp": okx_resp
+    }
 
 async def close_okx_position(account, symbol, close_type):
     """真实的OKX平仓函数，只平当前信号方向的仓位"""
@@ -572,21 +595,84 @@ async def process_close_signal(close_type, symbol):
 
 async def auto_restart_every_30min():
     while True:
-        await asyncio.sleep(1800)  # 30分钟
-        logger.info('【自动重启】30分钟到，准备重启进程...')
+        await asyncio.sleep(AUTO_RESTART_INTERVAL)  # 使用顶部变量
+        logger.info(f'【自动重启】{AUTO_RESTART_INTERVAL//60}分钟到，准备重启进程...')
         os.execv(sys.executable, [sys.executable] + sys.argv)
+
+async def send_startup_symbol_prices():
+    symbols = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+    now = get_shanghai_time()
+    for account in TEST_ACCOUNTS:
+        account_name = account['account_name']
+        price_lines = []
+        for symbol in symbols:
+            try:
+                market_api = MarketData.MarketAPI(debug=False)
+                response = market_api.get_ticker(instId=symbol)
+                if response.get('code') == '0':
+                    price = float(response['data'][0]['last'])
+                    price_lines.append(f"{symbol}: {price}")
+                else:
+                    price_lines.append(f"{symbol}: 获取失败({response.get('msg', '')})")
+            except Exception as e:
+                price_lines.append(f"{symbol}: 获取异常({e})")
+        log_msg = f"【启动价格播报】{now}\n账户: {account_name}\n" + "\n".join(price_lines)
+        logger.info(log_msg)
+        if TG_LOG_GROUP_ID:
+            await client.send_message(TG_LOG_GROUP_ID, log_msg)
+
+async def set_leverage_for_all_accounts():
+    symbols = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+    now = get_shanghai_time()
+    for account in TEST_ACCOUNTS:
+        account_name = account['account_name']
+        for symbol in symbols:
+            # 杠杆倍数从环境变量读取，默认10
+            leverage = os.getenv(f"OKX{account['account_idx']}_LEVERAGE", "10")
+            print("读取到的杠杆：", leverage)
+            try:
+                result = set_account_leverage(
+                    account['API_KEY'],
+                    account['SECRET_KEY'],
+                    account['PASSPHRASE'],
+                    account['FLAG'],
+                    symbol,
+                    leverage,
+                    mgn_mode="cross"
+                )
+                log_msg = f"【杠杆设置】{now}\n账户: {account_name}\n标的: {symbol}\n杠杆: {leverage}\n返回: {result}"
+                logger.info(log_msg)
+                if TG_LOG_GROUP_ID:
+                    await client.send_message(TG_LOG_GROUP_ID, log_msg)
+            except Exception as e:
+                log_msg = f"【杠杆设置异常】{now}\n账户: {account_name}\n标的: {symbol}\n杠杆: {leverage}\n异常: {e}"
+                logger.error(log_msg)
+                if TG_LOG_GROUP_ID:
+                    await client.send_message(TG_LOG_GROUP_ID, log_msg)
+
+# ===== 启动时只执行一次的初始化动作 =====
+# 1. 设置所有账户杠杆（只在程序启动/重启时执行一次，不会定时重复）
+# 2. 推送启动时 BTC/ETH 价格
+# 3. 初始化消息ID缓存
+# =====================================
 
 async def main():
     await client.start()
     logger.info(f'已登录 Telegram，监听频道: {CHANNEL_IDS}')
 
-    # 初始化消息ID缓存（最近20条默认不补单）
+    # 启动时为所有账户设置杠杆（只执行一次）
+    await set_leverage_for_all_accounts()
+
+    # 启动时推送BTC/ETH价格（只执行一次）
+    await send_startup_symbol_prices()
+
+    # 初始化消息ID缓存（只执行一次）
     await init_processed_ids()
 
-    # 启动消息遗漏检测定时任务
+    # 启动消息遗漏检测定时任务（循环）
     asyncio.create_task(check_and_patch_missing_signals())
 
-    # 启动定时重启任务
+    # 启动定时重启任务（循环）
     asyncio.create_task(auto_restart_every_30min())
 
     @client.on(events.NewMessage(chats=CHANNEL_IDS))
@@ -595,28 +681,38 @@ async def main():
         sender = await event.get_sender()
         sender_name = getattr(sender, 'username', None) or getattr(sender, 'first_name', '')
         sh_time = get_shanghai_time()
-        log_msg = f"[{sh_time}] 来自频道{event.chat_id} 用户{sender_name} 消息: {msg[:200]}"
-        logger.info(log_msg)
-        if TG_LOG_GROUP_ID:
-            await client.send_message(TG_LOG_GROUP_ID, log_msg)
-        # 处理信号前，登记消息ID，避免重复下单
         channel_id = event.chat_id
         msg_id = event.id
+        # 记录消息ID，避免重复
         if channel_id not in PROCESSED_MESSAGE_IDS:
             PROCESSED_MESSAGE_IDS[channel_id] = set()
         if msg_id not in PROCESSED_MESSAGE_IDS[channel_id]:
             PROCESSED_MESSAGE_IDS[channel_id].add(msg_id)
             save_processed_ids(PROCESSED_MESSAGE_IDS)
+        # 统一日志内容
+        base_log = f"【信号播报】\n时间: {sh_time}\n频道: {channel_id}\n用户: {sender_name}\n原始信息: {msg}"
         # 提取开仓信号
         action, symbol = extract_trade_info(msg)
         if action and symbol:
-            logger.info(f"检测到开仓信号: {action} {symbol}")
-            await process_open_signal(action, symbol, 0)  # 价格暂时设为0，实际应从信号中提取
+            for account in TEST_ACCOUNTS:
+                judge_log = f"信号判断: 检测到开仓信号 {action} {symbol} (账户: {account['account_name']})"
+                order_result = await place_okx_order(account, action, symbol, get_order_size(account['account_idx'], symbol) or 0)
+                result_log = f"下单返回: {json.dumps(order_result, ensure_ascii=False)}"
+                full_log = f"{base_log}\n{judge_log}\n{result_log}"
+                logger.info(full_log)
+                if TG_LOG_GROUP_ID:
+                    await client.send_message(TG_LOG_GROUP_ID, full_log)
         # 提取平仓信号
         close_type, close_symbol = extract_close_signal(msg)
         if close_type and close_symbol:
-            logger.info(f"检测到平仓信号: {close_type} {close_symbol}")
-            await process_close_signal(close_type, close_symbol)
+            for account in TEST_ACCOUNTS:
+                judge_log = f"信号判断: 检测到平仓信号 {close_type} {close_symbol} (账户: {account['account_name']})"
+                close_result = await close_okx_position(account, close_symbol, close_type)
+                result_log = f"平仓返回: {json.dumps(close_result, ensure_ascii=False)}"
+                full_log = f"{base_log}\n{judge_log}\n{result_log}"
+                logger.info(full_log)
+                if TG_LOG_GROUP_ID:
+                    await client.send_message(TG_LOG_GROUP_ID, full_log)
 
     await client.run_until_disconnected()
 

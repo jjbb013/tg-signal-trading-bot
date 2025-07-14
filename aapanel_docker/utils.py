@@ -5,6 +5,7 @@ import string
 import time
 from datetime import datetime, timezone, timedelta
 import requests
+import okx.Account as Account
 
 def get_shanghai_time(fmt="%Y-%m-%d %H:%M:%S"):
     tz = timezone(timedelta(hours=8))
@@ -68,3 +69,23 @@ def send_bark_notification(title, content, group=None):
         print(f"[Bark通知] GET状态码: {resp.status_code}, 响应: {resp.text[:100]}")
     except Exception as e:
         print(f"[Bark通知] GET失败: {e}")
+
+def set_account_leverage(apikey, secretkey, passphrase, flag, inst_id, lever, mgn_mode="isolated"):
+    """
+    设置账户指定标的的杠杆倍数。
+    :param apikey: API KEY
+    :param secretkey: SECRET KEY
+    :param passphrase: PASSPHRASE
+    :param flag: "0"为实盘，"1"为模拟盘
+    :param inst_id: 标的ID，如"BTC-USDT-SWAP"、"ETH-USDT-SWAP"、"BTC-USDT"等
+    :param lever: 杠杆倍数，字符串类型，如"5"
+    :param mgn_mode: 保证金模式，默认"isolated"（逐仓）
+    :return: OKX接口返回的原始结果
+    """
+    accountAPI = Account.AccountAPI(apikey, secretkey, passphrase, False, flag)
+    result = accountAPI.set_leverage(
+        instId=inst_id,
+        lever=lever,
+        mgnMode=mgn_mode
+    )
+    return result
